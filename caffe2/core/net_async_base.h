@@ -1,6 +1,7 @@
 #ifndef CAFFE2_CORE_NET_ASYNC_BASE_H_
 #define CAFFE2_CORE_NET_ASYNC_BASE_H_
 
+#include <c10/macros/Macros.h>
 #include "c10/core/thread_pool.h"
 #include "c10/util/Registry.h"
 #include "caffe2/core/common.h"
@@ -22,6 +23,7 @@ C10_DECLARE_bool(caffe2_net_async_check_stream_status);
 C10_DECLARE_bool(caffe2_net_async_use_single_pool);
 C10_DECLARE_bool(caffe2_net_async_use_per_net_pools);
 C10_DECLARE_bool(caffe2_net_async_run_root_tasks_inline);
+C10_DECLARE_bool(caffe2_net_async_profile_operators);
 
 namespace caffe2 {
 
@@ -55,7 +57,13 @@ struct ExecutionOptions {
   bool run_root_tasks_inline_ = false;
 };
 
-class CAFFE2_API AsyncNetBase : public NetBase {
+struct TORCH_API AsyncNetCancelled : public std::exception {
+  const char* what() const noexcept override {
+    return "Cancelled";
+  }
+};
+
+class TORCH_API AsyncNetBase : public NetBase {
  public:
   AsyncNetBase(const std::shared_ptr<const NetDef>& net_def, Workspace* ws);
   ~AsyncNetBase() override;

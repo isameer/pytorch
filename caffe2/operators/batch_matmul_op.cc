@@ -1,8 +1,10 @@
 #include "caffe2/operators/batch_matmul_op.h"
+
 #include "caffe2/core/operator_schema.h"
 
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(BatchMatMul, BatchMatMulOp<CPUContext>);
 
 vector<TensorShape> TensorInferenceForBatchMatMul(
@@ -14,7 +16,9 @@ vector<TensorShape> TensorInferenceForBatchMatMul(
     const auto ndim = in[0].dims_size();
     CAFFE_ENFORCE_GE(ndim, 2);
     CAFFE_ENFORCE_GE(in[1].dims_size(), 2);
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
     int a_dim0;
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
     int b_dim1;
     if (helper.GetSingleArgument<int>("trans_a", 0)) {
       a_dim0 = in[0].dims(ndim - 1);
@@ -28,7 +32,8 @@ vector<TensorShape> TensorInferenceForBatchMatMul(
       b_dim1 = in[1].dims(ndim - 1);
     }
 
-    auto output_dims = vector<int64_t>{in[0].dims().begin(), in[0].dims().end()};
+    auto output_dims =
+        vector<int64_t>{in[0].dims().begin(), in[0].dims().end()};
     output_dims[ndim - 2] = a_dim0;
     output_dims[ndim - 1] = b_dim1;
 
@@ -55,6 +60,7 @@ vector<TensorShape> TensorInferenceForBatchMatMul(
       ndims_B = 2;
       B_broadcasted = true;
     }
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
     size_t M, N;
     if (helper.GetSingleArgument<int>("trans_a", 0)) {
       M = dims_A[ndims_A - 1];
@@ -90,7 +96,7 @@ vector<TensorShape> TensorInferenceForBatchMatMul(
 OpSchema::Cost CostInferenceForBatchMatMul(
     const OperatorDef& def,
     const vector<TensorShape>& in) {
-  CAFFE_ENFORCE_EQ(in.size(), 2, "BatchMatMul requires two inputs");
+  CAFFE_ENFORCE_EQ(in.size(), 2U, "BatchMatMul requires two inputs");
 
   ArgumentHelper helper(def);
   struct OpSchema::Cost c;
@@ -103,6 +109,7 @@ OpSchema::Cost CostInferenceForBatchMatMul(
   uint64_t nElemY = nElemFromDim(Y);
 
   auto ndims_A = A.dims_size();
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   size_t K;
   if (helper.GetSingleArgument<int>("trans_a", 0)) {
     K = in[0].dims(ndims_A - 2);
@@ -117,6 +124,7 @@ OpSchema::Cost CostInferenceForBatchMatMul(
   return c;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(BatchMatMul)
     .NumInputs(2)
     .NumOutputs(1)
@@ -124,10 +132,10 @@ OPERATOR_SCHEMA(BatchMatMul)
 Batch Matrix multiplication Yi = Ai * Bi, where A has shape (dim0, dim1, ... M, K),
 B has shape (dim0, dim1, ... K, N), Y has shape (dim0, dim1, ... M, N) and i ranges
 from 0 to (dim0 * dim1 ...) - 1. rank(A) == rank(B) >= 2. In case of A and B being
-two diemnsional, it behaves like normal matrix multiplication.
+two dimensional, it behaves like normal matrix multiplication.
 )DOC")
     .Input(0, "A", "tensor of shape (dim0, dim1 ... M, K)")
-    .Input(1, "B", "tensor of shpae (dim0, dim2 ... K, N)")
+    .Input(1, "B", "tensor of shape (dim0, dim1 ... K, N)")
     .Output(0, "Y", "tensor of shape (dim0, dim1 ... M, N)")
     .Arg(
         "trans_a",
@@ -159,7 +167,9 @@ class GetBatchMatMulGradient : public GradientMakerBase {
         "Gradient is currently not supported with "
         "broadcast=1 for BatchMatMul.");
 
+    // NOLINTNEXTLINE(modernize-use-bool-literals)
     bool trans_a = 0;
+    // NOLINTNEXTLINE(modernize-use-bool-literals)
     bool trans_b = 0;
 
     if (ArgumentHelper::HasArgument(Def(), "trans_a")) {
@@ -247,6 +257,7 @@ class GetBatchMatMulGradient : public GradientMakerBase {
   }
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(BatchMatMul, GetBatchMatMulGradient);
 
 } // namespace caffe2

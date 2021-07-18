@@ -25,7 +25,7 @@ class CreateBlobsQueueDBOp : public Operator<CPUContext> {
       : Operator<CPUContext>(operator_def, ws) {}
 
   bool RunOnDevice() override {
-    std::unique_ptr<db::DB> db = caffe2::make_unique<BlobsQueueDB>(
+    std::unique_ptr<db::DB> db = std::make_unique<BlobsQueueDB>(
         "",
         db::READ,
         OperatorBase::Input<std::shared_ptr<BlobsQueue>>(0),
@@ -40,14 +40,17 @@ class CreateBlobsQueueDBOp : public Operator<CPUContext> {
   C10_DISABLE_COPY_AND_ASSIGN(CreateBlobsQueueDBOp);
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(CreateBlobsQueueDB, CreateBlobsQueueDBOp<CPUContext>);
 
 #ifdef CAFFE2_USE_MKLDNN
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_IDEEP_OPERATOR(
     CreateBlobsQueueDB,
     IDEEPFallbackOp<CreateBlobsQueueDBOp<CPUContext>, SkipIndices<0>>);
 #endif
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(CreateBlobsQueueDB)
     .NumInputs(1)
     .NumOutputs(1)
@@ -65,6 +68,7 @@ OPERATOR_SCHEMA(CreateBlobsQueueDB)
     .Input(0, "queue", "The shared pointer to a queue containing Blobs.")
     .Output(0, "reader", "The DBReader for the given BlobsQueue");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 SHOULD_NOT_DO_GRADIENT(CreateBlobsQueueDB);
 
 } // namespace db

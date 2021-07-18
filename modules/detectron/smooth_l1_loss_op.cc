@@ -18,11 +18,14 @@
 
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(SmoothL1Loss, SmoothL1LossOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     SmoothL1LossGradient,
     SmoothL1LossGradientOp<float, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SmoothL1Loss)
     .NumInputs(4)
     .NumOutputs(1)
@@ -33,7 +36,7 @@ transition between L2 loss and L1 loss is adjustable by a hyper-parameter beta:
   SmoothL1(x) = 0.5 * x^2 / beta      if |x| < beta
                 |x| - 0.5 * beta      otherwise.
 
-SmoothL1 is used in Fast R-CNN and decendants as the loss function for bounding
+SmoothL1 is used in Fast R-CNN and descendants as the loss function for bounding
 box regression.
 
 The loss computed by this op has a flexible form:
@@ -73,6 +76,7 @@ where N is the number of batch elements in the input predictions.
         "loss",
         "Scalar loss.");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SmoothL1LossGradient)
     .NumInputs(5)
     .NumOutputs(1)
@@ -112,6 +116,7 @@ class GetSmoothL1LossGradient : public GradientMakerBase {
   }
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(SmoothL1Loss, GetSmoothL1LossGradient);
 
 } // namespace caffe2

@@ -56,24 +56,36 @@ bool StumpFuncIndexOp<float, int64_t, CPUContext>::RunOnDevice() {
   return true;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(StumpFunc, StumpFuncOp<float, float, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(StumpFunc)
     .NumInputs(1)
     .NumOutputs(1)
     .Input(0, "X", "tensor of float")
     .Output(0, "Y", "tensor of float")
+    .TensorInferenceFunction([](const OperatorDef&,
+                                const vector<TensorShape>& input_types) {
+      vector<TensorShape> out(1);
+      out.at(0) = input_types.at(0);
+      out.at(0).set_data_type(TensorProto_DataType::TensorProto_DataType_FLOAT);
+      return out;
+    })
     .SetDoc(R"DOC(
 Converts each input element into either high_ or low_value
 based on the given threshold.
 )DOC");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 NO_GRADIENT(StumpFunc);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     StumpFuncIndex,
     StumpFuncIndexOp<float, int64_t, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(StumpFuncIndex)
     .NumInputs(1)
     .NumOutputs(2)
@@ -87,9 +99,10 @@ OPERATOR_SCHEMA(StumpFuncIndex)
         "Index_High",
         "tensor of int64 indices for elements above threshold")
     .SetDoc(R"DOC(
-Split the elemnts and return the indices based on the given threshold.
+Split the elements and return the indices based on the given threshold.
 )DOC");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 NO_GRADIENT(StumpFuncIndex);
 
-} // caffe2
+} // namespace caffe2

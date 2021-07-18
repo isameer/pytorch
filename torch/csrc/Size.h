@@ -4,6 +4,7 @@
 #include <torch/csrc/autograd/variable.h>
 #include <cstdint>
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 extern PyTypeObject THPSizeType;
 
 #define THPSize_Check(obj) (Py_TYPE(obj) == &THPSizeType)
@@ -11,6 +12,4 @@ extern PyTypeObject THPSizeType;
 PyObject * THPSize_New(const torch::autograd::Variable& t);
 PyObject * THPSize_NewFromSizes(int dim, const int64_t *sizes);
 
-#ifdef _THP_CORE
 void THPSize_init(PyObject *module);
-#endif

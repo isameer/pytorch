@@ -2,10 +2,9 @@
 
 #include "caffe2/core/types.h"
 #include "caffe2/perfkernels/common.h"
-#include "caffe2/perfkernels/typed_axpy.h"
 #include "caffe2/utils/cpuid.h"
-#include "caffe2/utils/eigen_utils.h"
-#include "caffe2/utils/math.h"
+
+#include <c10/util/irange.h>
 
 namespace caffe2 {
 
@@ -34,9 +33,8 @@ static bool Fused8BitRowwiseEmbeddingLookupGenericSlow(
   const auto scale_bias_offset = 8 / sizeof(InType);
   const int64_t fused_block_size = block_size + scale_bias_offset;
   int64_t current = 0;
-  for (int m = 0; m < output_size; ++m) {
+  for (const auto m : c10::irange(output_size)) {
     memset(out, 0, sizeof(OutType) * block_size);
-    EigenVectorArrayMap<OutType> out_vector(out, block_size);
     if (current + lengths[m] > index_size) {
       return false;
     }
@@ -62,17 +60,18 @@ static bool Fused8BitRowwiseEmbeddingLookupGenericSlow(
       const float scale = weight * scale_bias[0];
       const float bias = weight * scale_bias[1];
 
-      TypedAxpy<InType, OutType>(
-          block_size, scale, input + fused_block_size * indices[current], out);
-
-      out_vector += bias;
+      for (const auto j : c10::irange(block_size)) {
+        out[j] += scale * input[fused_block_size * indices[current] + j] + bias;
+      }
 
       ++current;
     }
     if (normalize_by_lengths && lengths[m]) {
-      // hack: context is not really used
-      math::Scale<float, OutType, CPUContext>(
-          block_size, 1.f / lengths[m], out, out, nullptr);
+      // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
+      float scale = 1.f / lengths[m];
+      for (const auto j : c10::irange(block_size)) {
+        out[j] *= scale;
+      }
     }
     out += block_size;
   }

@@ -14,18 +14,22 @@
  * limitations under the License.
  */
 
-#include "group_spatial_softmax_op.h"
-#include "caffe2/operators/softmax_shared.h"
+#include "modules/detectron/group_spatial_softmax_op.h"
+
+#include "caffe2/operators/softmax_utils.h"
 
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     GroupSpatialSoftmax,
     GroupSpatialSoftmaxOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     GroupSpatialSoftmaxGradient,
     GroupSpatialSoftmaxGradientOp<float, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(GroupSpatialSoftmax)
     .NumInputs(1)
     .NumOutputs(1)
@@ -56,21 +60,16 @@ See: https://arxiv.org/abs/1708.02002 for details.
         "C = num_anchors * num_classes, and softmax was applied to each of the "
         "num_anchors groups; within a group the num_classes values sum to 1.");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(GroupSpatialSoftmaxGradient)
     .NumInputs(2)
     .NumOutputs(1)
-    .Input(
-        0,
-        "scores",
-        "See GroupSpatialSoftmax")
+    .Input(0, "scores", "See GroupSpatialSoftmax")
     .Input(
         1,
         "d_probabilities",
         "Gradient of forward output 0 (probabilities).")
-    .Output(
-        0,
-        "d_scores",
-        "Gradient of forward input 0 (scores).");
+    .Output(0, "d_scores", "Gradient of forward input 0 (scores).");
 
 class GetGroupSpatialSoftmaxGradient : public GradientMakerBase {
   using GradientMakerBase::GradientMakerBase;
@@ -83,5 +82,7 @@ class GetGroupSpatialSoftmaxGradient : public GradientMakerBase {
   }
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(GroupSpatialSoftmax, GetGroupSpatialSoftmaxGradient);
+
 } // namespace caffe2

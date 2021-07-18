@@ -5,47 +5,62 @@
 #include "caffe2/core/timer.h"
 
 // experimental support for multiple streams per worker per GPU
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_int(
     caffe2_streams_per_gpu,
     1,
     "Number of streams per worker per GPU"
     " to use in GPU thread pool (experimental)");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_bool(
     caffe2_net_async_inference_mode,
     false,
     "If set, use one single chain containing all ops");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+C10_DEFINE_bool(
+    caffe2_net_async_profile_operators,
+    false,
+    "If set, profile operators of the net regardless of net being prof_dag.");
+
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_int(
     caffe2_net_async_max_gpus,
     16,
     "Max number of GPUs allowed in net async executor");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_int(
     caffe2_net_async_max_numa_nodes,
     8,
     "Max number of NUMA nodes allowed in net async executor");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_int(
     caffe2_net_async_thread_pool_size,
     0,
     "Number of threads in device thread pool by default");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_bool(
     caffe2_net_async_check_stream_status,
     false,
     "Select next non-busy stream");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_bool(
     caffe2_net_async_use_single_pool,
     false,
     "Use single thread pool for all devices");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_bool(
     caffe2_net_async_use_per_net_pools,
     false,
     "Use per net thread pools");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_bool(
     caffe2_net_async_run_root_tasks_inline,
     false,
@@ -58,12 +73,13 @@ std::vector<int>& AsyncNetBase::getStreamCounters() {
   return stream_counters_;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
 AsyncNetBase::AsyncNetBase(
     const std::shared_ptr<const NetDef>& net_def,
     Workspace* ws)
     : NetBase(net_def, ws), options_(net_def), counters_(net_def) {
   operator_nodes_ = dag_utils::prepareOperatorNodes(net_def, ws);
-  helper_ = caffe2::make_unique<AsyncNetExecutorHelper>(this);
+  helper_ = std::make_unique<AsyncNetExecutorHelper>(this);
   operators_.reserve(operator_nodes_.size());
   for (const auto& node : operator_nodes_) {
     auto op_ptr = node.operator_.get();
@@ -114,14 +130,14 @@ bool AsyncNetBase::handleRunError() {
   for (int task_id = 0; task_id < tasksNum(); ++task_id) {
     if (event(task_id).HasException()) {
       if (first_exc_task_id >= 0) {
-        auto exc_ts = event(task_id).ExceptionTimestamp();
+        auto exc_ts = event(task_id).ErrorTimestamp();
         if (exc_ts < first_exc_ts) {
           first_exc_task_id = task_id;
           first_exc_ts = exc_ts;
         }
       } else {
         first_exc_task_id = task_id;
-        first_exc_ts = event(task_id).ExceptionTimestamp();
+        first_exc_ts = event(task_id).ErrorTimestamp();
       }
     }
   }
@@ -227,6 +243,7 @@ bool AsyncNetBase::canSchedule(
   auto first_child_op_id = chains_[task_id].front();
   for (auto parent_id : parents(task_id)) {
     auto last_parent_op_id = chains_[parent_id].back();
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
     EventStatus parent_status;
     if (status) {
       parent_status = status->at(parent_id);
@@ -394,6 +411,10 @@ bool AsyncNetBase::run(int task_id, int stream_id) noexcept {
     if (!options_.finish_chain_) {
       asyncWait(task_id, stream_id, parents(task_id));
     }
+    int iter_id = -1;
+    if (tracer_) {
+      iter_id = tracer_->getIter();
+    }
     for (auto& op_id : chains_[task_id]) {
       op = operators_[op_id];
       bool success = false;
@@ -404,7 +425,9 @@ bool AsyncNetBase::run(int task_id, int stream_id) noexcept {
             tracing::TRACE_TASK,
             task_id,
             tracing::TRACE_STREAM,
-            stream_id);
+            stream_id,
+            tracing::TRACE_ITER,
+            iter_id);
         success = op->RunAsync(stream_id);
       } else {
         counters_.AddPerOpStartTime(op_id);
@@ -447,15 +470,71 @@ void AsyncNetBase::finishTasks(const std::unordered_set<int>& task_ids) {
 }
 
 void AsyncNetBase::finalizeEvents() {
+  std::vector<OperatorBase*> pending_ops;
   for (auto task_id = 0; task_id < tasksNum(); ++task_id) {
     auto status = query(task_id);
     if (status == EventStatus::EVENT_SCHEDULED) {
-      event(task_id).Finish();
+      // async cpu ops need to be handled separately,
+      // as they may potentially never finish
+      auto* op = lastTaskOp(task_id);
+      if (op->HasAsyncPart() &&
+          op->device_option().device_type() == PROTO_CPU) {
+        pending_ops.push_back(op);
+      } else {
+        event(task_id).Finish();
+      }
     } else if (status == EventStatus::EVENT_INITIALIZED) {
       event(task_id).SetFinished();
     }
+  }
+
+  // avoid events cancelling each other and causing
+  // a deadlock
+  std::atomic_flag error_happened = ATOMIC_FLAG_INIT;
+  for (auto* pending_op : pending_ops) {
+    pending_op->event().SetCallback(
+        [pending_op, &pending_ops, &error_happened]() {
+          // if one of the async cpu ops failed,
+          // we have to terminate other pending async cpu ops
+          auto status = pending_op->event().Query();
+          TORCH_CHECK(
+              status == EventStatus::EVENT_SUCCESS ||
+              status == EventStatus::EVENT_FAILED);
+          if (status == EventStatus::EVENT_FAILED) {
+            // go through all the ops and terminate them,
+            // we may get an exception in case of multiple
+            // SetFinished() calls
+            if (!error_happened.test_and_set()) {
+              for (auto* op : pending_ops) {
+                if (op != pending_op) {
+                  try {
+                    op->CancelAsyncCallback();
+
+                    // throw and catch exception to preserve stack trace
+                    try {
+                      throw AsyncNetCancelled();
+                    } catch (const AsyncNetCancelled& e) {
+                      op->event().SetFinishedWithException(e.what());
+                    }
+                  } catch (const EnforceNotMet&) {
+                    // ignore
+                  }
+                }
+              }
+            }
+          }
+        });
+  }
+
+  // wait for all pending ops to be finished or be terminated
+  for (auto* pending_op : pending_ops) {
+    pending_op->event().Finish();
+  }
+
+  for (auto task_id = 0; task_id < tasksNum(); ++task_id) {
     if (event(task_id).Query() != EventStatus::EVENT_SUCCESS) {
       success_ = false;
+      break;
     }
   }
 }
@@ -534,6 +613,9 @@ ExecutionOptions::ExecutionOptions(
     }
   }
 
+  if (FLAGS_caffe2_net_async_profile_operators) {
+    report_stats_ = true;
+  }
   run_root_tasks_inline_ = FLAGS_caffe2_net_async_run_root_tasks_inline;
 }
 
@@ -541,14 +623,17 @@ ExecutionOptions::ExecutionOptions(
 
 namespace c10 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_REGISTER_CREATOR(
     ThreadPoolRegistry,
     CPU,
     caffe2::GetAsyncNetThreadPool<TaskThreadPool, caffe2::PROTO_CPU>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_REGISTER_CREATOR(
     ThreadPoolRegistry,
     CUDA,
     caffe2::GetAsyncNetThreadPool<TaskThreadPool, caffe2::PROTO_CUDA>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_REGISTER_CREATOR(
     ThreadPoolRegistry,
     HIP,

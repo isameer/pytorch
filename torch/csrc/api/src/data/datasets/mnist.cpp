@@ -37,6 +37,7 @@ constexpr uint32_t flip_endianness(uint32_t value) {
 
 uint32_t read_int32(std::ifstream& stream) {
   static const bool is_little_endian = check_is_little_endian();
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   uint32_t value;
   AT_ASSERT(stream.read(reinterpret_cast<char*>(&value), sizeof value));
   return is_little_endian ? flip_endianness(value) : value;
@@ -45,7 +46,7 @@ uint32_t read_int32(std::ifstream& stream) {
 uint32_t expect_int32(std::ifstream& stream, uint32_t expected) {
   const auto value = read_int32(stream);
   // clang-format off
-  AT_CHECK(value == expected,
+  TORCH_CHECK(value == expected,
       "Expected to read number ", expected, " but found ", value, " instead");
   // clang-format on
   return value;
@@ -63,7 +64,7 @@ Tensor read_images(const std::string& root, bool train) {
   const auto path =
       join_paths(root, train ? kTrainImagesFilename : kTestImagesFilename);
   std::ifstream images(path, std::ios::binary);
-  AT_CHECK(images, "Error opening images file at ", path);
+  TORCH_CHECK(images, "Error opening images file at ", path);
 
   const auto count = train ? kTrainSize : kTestSize;
 
@@ -83,7 +84,7 @@ Tensor read_targets(const std::string& root, bool train) {
   const auto path =
       join_paths(root, train ? kTrainTargetsFilename : kTestTargetsFilename);
   std::ifstream targets(path, std::ios::binary);
-  AT_CHECK(targets, "Error opening targets file at ", path);
+  TORCH_CHECK(targets, "Error opening targets file at ", path);
 
   const auto count = train ? kTrainSize : kTestSize;
 
@@ -108,6 +109,7 @@ optional<size_t> MNIST::size() const {
   return images_.size(0);
 }
 
+// NOLINTNEXTLINE(bugprone-exception-escape)
 bool MNIST::is_train() const noexcept {
   return images_.size(0) == kTrainSize;
 }

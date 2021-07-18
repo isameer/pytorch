@@ -17,6 +17,7 @@ void CompareDivMod(int32_t v, int32_t divisor) {
   int fixed_q = fixed.Div(v);
   int fixed_r = fixed.Mod(v);
 
+#ifndef __HIP_PLATFORM_HCC__
   EXPECT_EQ(native_q, fixed_q)
       << v << " / " << divisor << " magic " << fixed.magic() << " shift "
       << fixed.shift() << " quot " << fixed_q << " " << native_q;
@@ -24,10 +25,12 @@ void CompareDivMod(int32_t v, int32_t divisor) {
   EXPECT_EQ(native_r, fixed_r)
       << v << " / " << divisor << " magic " << fixed.magic() << " shift "
       << fixed.shift() << " rem " << fixed_r << " " << native_r;
+#endif
 }
 
 } // namespace
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(FixedDivisorTest, FixedDivisorInt32Test) {
   constexpr int32_t kMax = std::numeric_limits<int32_t>::max();
 

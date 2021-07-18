@@ -20,17 +20,6 @@ def _batch_mv(bmat, bvec):
     return torch.matmul(bmat, bvec.unsqueeze(-1)).squeeze(-1)
 
 
-def _batch_trtrs_lower(bb, bA):
-    """
-    Applies `torch.trtrs` for batches of matrices. `bb` and `bA` should have
-    the same batch shape.
-    """
-    flat_b = bb.reshape((-1,) + bb.shape[-2:])
-    flat_A = bA.reshape((-1,) + bA.shape[-2:])
-    flat_X = torch.stack([torch.trtrs(b, A, upper=False)[0] for b, A in zip(flat_b, flat_A)])
-    return flat_X.reshape(bb.shape)
-
-
 def _batch_mahalanobis(bL, bx):
     r"""
     Computes the squared Mahalanobis distance :math:`\mathbf{x}^\top\mathbf{M}^{-1}\mathbf{x}`
@@ -43,7 +32,7 @@ def _batch_mahalanobis(bL, bx):
     bx_batch_shape = bx.shape[:-1]
 
     # Assume that bL.shape = (i, 1, n, n), bx.shape = (..., i, j, n),
-    # we are going to make bx have shape (..., 1, j,  i, 1, n) to apply _batch_trtrs_lower
+    # we are going to make bx have shape (..., 1, j,  i, 1, n) to apply batched tri.solve
     bx_batch_dims = len(bx_batch_shape)
     bL_batch_dims = bL.dim() - 2
     outer_batch_dims = bx_batch_dims - bL_batch_dims
@@ -65,7 +54,7 @@ def _batch_mahalanobis(bL, bx):
     flat_L = bL.reshape(-1, n, n)  # shape = b x n x n
     flat_x = bx.reshape(-1, flat_L.size(0), n)  # shape = c x b x n
     flat_x_swap = flat_x.permute(1, 2, 0)  # shape = b x n x c
-    M_swap = _batch_trtrs_lower(flat_x_swap, flat_L).pow(2).sum(-2)  # shape = b x c
+    M_swap = torch.triangular_solve(flat_x_swap, flat_L, upper=False)[0].pow(2).sum(-2)  # shape = b x c
     M = M_swap.t()  # shape = c x b
 
     # Now we revert the above reshape and permute operators.
@@ -75,6 +64,15 @@ def _batch_mahalanobis(bL, bx):
         permute_inv_dims += [outer_batch_dims + i, old_batch_dims + i]
     reshaped_M = permuted_M.permute(permute_inv_dims)  # shape = (..., 1, i, j, 1)
     return reshaped_M.reshape(bx_batch_shape)
+
+
+def _precision_to_scale_tril(P):
+    # Ref: https://nbviewer.jupyter.org/gist/fehiepsi/5ef8e09e61604f10607380467eb82006#Precision-to-scale_tril
+    Lf = torch.linalg.cholesky(torch.flip(P, (-2, -1)))
+    L_inv = torch.transpose(torch.flip(Lf, (-2, -1)), -2, -1)
+    L = torch.triangular_solve(torch.eye(P.shape[-1], dtype=P.dtype, device=P.device),
+                               L_inv, upper=False)[0]
+    return L
 
 
 class MultivariateNormal(Distribution):
@@ -115,7 +113,7 @@ class MultivariateNormal(Distribution):
                        'covariance_matrix': constraints.positive_definite,
                        'precision_matrix': constraints.positive_definite,
                        'scale_tril': constraints.lower_cholesky}
-    support = constraints.real
+    support = constraints.real_vector
     has_rsample = True
 
     def __init__(self, loc, covariance_matrix=None, precision_matrix=None, scale_tril=None, validate_args=None):
@@ -124,33 +122,35 @@ class MultivariateNormal(Distribution):
         if (covariance_matrix is not None) + (scale_tril is not None) + (precision_matrix is not None) != 1:
             raise ValueError("Exactly one of covariance_matrix or precision_matrix or scale_tril may be specified.")
 
-        loc_ = loc.unsqueeze(-1)  # temporarily add dim on right
         if scale_tril is not None:
             if scale_tril.dim() < 2:
                 raise ValueError("scale_tril matrix must be at least two-dimensional, "
                                  "with optional leading batch dimensions")
-            self.scale_tril, loc_ = torch.broadcast_tensors(scale_tril, loc_)
+            batch_shape = torch.broadcast_shapes(scale_tril.shape[:-2], loc.shape[:-1])
+            self.scale_tril = scale_tril.expand(batch_shape + (-1, -1))
         elif covariance_matrix is not None:
             if covariance_matrix.dim() < 2:
                 raise ValueError("covariance_matrix must be at least two-dimensional, "
                                  "with optional leading batch dimensions")
-            self.covariance_matrix, loc_ = torch.broadcast_tensors(covariance_matrix, loc_)
+            batch_shape = torch.broadcast_shapes(covariance_matrix.shape[:-2], loc.shape[:-1])
+            self.covariance_matrix = covariance_matrix.expand(batch_shape + (-1, -1))
         else:
             if precision_matrix.dim() < 2:
                 raise ValueError("precision_matrix must be at least two-dimensional, "
                                  "with optional leading batch dimensions")
-            self.precision_matrix, loc_ = torch.broadcast_tensors(precision_matrix, loc_)
-        self.loc = loc_[..., 0]  # drop rightmost dim
+            batch_shape = torch.broadcast_shapes(precision_matrix.shape[:-2], loc.shape[:-1])
+            self.precision_matrix = precision_matrix.expand(batch_shape + (-1, -1))
+        self.loc = loc.expand(batch_shape + (-1,))
 
-        batch_shape, event_shape = self.loc.shape[:-1], self.loc.shape[-1:]
+        event_shape = self.loc.shape[-1:]
         super(MultivariateNormal, self).__init__(batch_shape, event_shape, validate_args=validate_args)
 
         if scale_tril is not None:
             self._unbroadcasted_scale_tril = scale_tril
-        else:
-            if precision_matrix is not None:
-                self.covariance_matrix = torch.inverse(precision_matrix).expand_as(loc_)
-            self._unbroadcasted_scale_tril = torch.cholesky(self.covariance_matrix)
+        elif covariance_matrix is not None:
+            self._unbroadcasted_scale_tril = torch.linalg.cholesky(covariance_matrix)
+        else:  # precision_matrix is not None
+            self._unbroadcasted_scale_tril = _precision_to_scale_tril(precision_matrix)
 
     def expand(self, batch_shape, _instance=None):
         new = self._get_checked_instance(MultivariateNormal, _instance)
@@ -184,9 +184,9 @@ class MultivariateNormal(Distribution):
 
     @lazy_property
     def precision_matrix(self):
-        # TODO: use `torch.potri` on `scale_tril` once a backwards pass is implemented.
-        scale_tril_inv = torch.inverse(self._unbroadcasted_scale_tril)
-        return torch.matmul(scale_tril_inv.transpose(-1, -2), scale_tril_inv).expand(
+        identity = torch.eye(self.loc.size(-1), device=self.loc.device, dtype=self.loc.dtype)
+        # TODO: use cholesky_inverse when its batching is supported
+        return torch.cholesky_solve(identity, self._unbroadcasted_scale_tril).expand(
             self._batch_shape + self._event_shape + self._event_shape)
 
     @property

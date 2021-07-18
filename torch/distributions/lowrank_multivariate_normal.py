@@ -3,8 +3,7 @@ import math
 import torch
 from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
-from torch.distributions.multivariate_normal import (_batch_mahalanobis, _batch_mv,
-                                                     _batch_trtrs_lower)
+from torch.distributions.multivariate_normal import _batch_mahalanobis, _batch_mv
 from torch.distributions.utils import _standard_normal, lazy_property
 
 
@@ -17,7 +16,7 @@ def _batch_capacitance_tril(W, D):
     Wt_Dinv = W.transpose(-1, -2) / D.unsqueeze(-2)
     K = torch.matmul(Wt_Dinv, W).contiguous()
     K.view(-1, m * m)[:, ::m + 1] += 1  # add identity matrix to K
-    return torch.cholesky(K)
+    return torch.linalg.cholesky(K)
 
 
 def _batch_lowrank_logdet(W, D, capacitance_tril):
@@ -48,12 +47,13 @@ class LowRankMultivariateNormal(Distribution):
     r"""
     Creates a multivariate normal distribution with covariance matrix having a low-rank form
     parameterized by :attr:`cov_factor` and :attr:`cov_diag`::
+
         covariance_matrix = cov_factor @ cov_factor.T + cov_diag
 
     Example:
 
-        >>> m = LowRankMultivariateNormal(torch.zeros(2), torch.tensor([1, 0]), torch.tensor([1, 1]))
-        >>> m.sample()  # normally distributed with mean=`[0,0]`, cov_factor=`[1,0]`, cov_diag=`[1,1]`
+        >>> m = LowRankMultivariateNormal(torch.zeros(2), torch.tensor([[1.], [0.]]), torch.ones(2))
+        >>> m.sample()  # normally distributed with mean=`[0,0]`, cov_factor=`[[1],[0]]`, cov_diag=`[1,1]`
         tensor([-0.2102, -0.5429])
 
     Args:
@@ -70,12 +70,13 @@ class LowRankMultivariateNormal(Distribution):
         `matrix determinant lemma <https://en.wikipedia.org/wiki/Matrix_determinant_lemma>`_.
         Thanks to these formulas, we just need to compute the determinant and inverse of
         the small size "capacitance" matrix::
+
             capacitance = I + cov_factor.T @ inv(cov_diag) @ cov_factor
     """
-    arg_constraints = {"loc": constraints.real,
-                       "cov_factor": constraints.real,
-                       "cov_diag": constraints.positive}
-    support = constraints.real
+    arg_constraints = {"loc": constraints.real_vector,
+                       "cov_factor": constraints.independent(constraints.real, 2),
+                       "cov_diag": constraints.independent(constraints.positive, 1)}
+    support = constraints.real_vector
     has_rsample = True
 
     def __init__(self, loc, cov_factor, cov_diag, validate_args=None):
@@ -95,9 +96,9 @@ class LowRankMultivariateNormal(Distribution):
         cov_diag_ = cov_diag.unsqueeze(-1)
         try:
             loc_, self.cov_factor, cov_diag_ = torch.broadcast_tensors(loc_, cov_factor, cov_diag_)
-        except RuntimeError:
+        except RuntimeError as e:
             raise ValueError("Incompatible batch shapes: loc {}, cov_factor {}, cov_diag {}"
-                             .format(loc.shape, cov_factor.shape, cov_diag.shape))
+                             .format(loc.shape, cov_factor.shape, cov_diag.shape)) from e
         self.loc = loc_[..., 0]
         self.cov_diag = cov_diag_[..., 0]
         batch_shape = self.loc.shape[:-1]
@@ -145,7 +146,7 @@ class LowRankMultivariateNormal(Distribution):
         Dinvsqrt_W = self._unbroadcasted_cov_factor / cov_diag_sqrt_unsqueeze
         K = torch.matmul(Dinvsqrt_W, Dinvsqrt_W.transpose(-1, -2)).contiguous()
         K.view(-1, n * n)[:, ::n + 1] += 1  # add identity matrix to K
-        scale_tril = cov_diag_sqrt_unsqueeze * torch.cholesky(K)
+        scale_tril = cov_diag_sqrt_unsqueeze * torch.linalg.cholesky(K)
         return scale_tril.expand(self._batch_shape + self._event_shape + self._event_shape)
 
     @lazy_property
@@ -163,7 +164,7 @@ class LowRankMultivariateNormal(Distribution):
         # where :math:`C` is the capacitance matrix.
         Wt_Dinv = (self._unbroadcasted_cov_factor.transpose(-1, -2)
                    / self._unbroadcasted_cov_diag.unsqueeze(-2))
-        A = _batch_trtrs_lower(Wt_Dinv, self._capacitance_tril)
+        A = torch.triangular_solve(Wt_Dinv, self._capacitance_tril, upper=False)[0]
         precision_matrix = (torch.diag_embed(self._unbroadcasted_cov_diag.reciprocal())
                             - torch.matmul(A.transpose(-1, -2), A))
         return precision_matrix.expand(self._batch_shape + self._event_shape +

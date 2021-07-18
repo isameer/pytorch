@@ -7,29 +7,30 @@
 //
 // The naming convention used here matches the naming convention of torch.cuda
 
-#include <cuda_runtime_api.h>
-
-#include <c10/macros/Macros.h>
 #include <c10/core/Device.h>
-#include <c10/cuda/CUDAException.h>
+#include <c10/cuda/CUDAMacros.h>
 
 namespace c10 {
 namespace cuda {
 
-inline DeviceIndex device_count() {
-  int count;
-  C10_CUDA_CHECK(cudaGetDeviceCount(&count));
-  return static_cast<DeviceIndex>(count);
-}
+// NB: In the past, we were inconsistent about whether or not this reported
+// an error if there were driver problems are not.  Based on experience
+// interacting with users, it seems that people basically ~never want this
+// function to fail; it should just return zero if things are not working.
+// Oblige them.
+// It still might log a warning for user first time it's invoked
+C10_CUDA_API DeviceIndex device_count() noexcept;
 
-inline DeviceIndex current_device() {
-  int cur_device;
-  C10_CUDA_CHECK(cudaGetDevice(&cur_device));
-  return static_cast<DeviceIndex>(cur_device);
-}
+// Version of device_count that throws is no devices are detected
+C10_CUDA_API DeviceIndex device_count_ensure_non_zero();
 
-inline void set_device(DeviceIndex device) {
-  C10_CUDA_CHECK(cudaSetDevice(static_cast<int>(device)));
-}
+C10_CUDA_API DeviceIndex current_device();
 
-}} // namespace c10::cuda
+C10_CUDA_API void set_device(DeviceIndex device);
+
+C10_CUDA_API void device_synchronize();
+
+C10_CUDA_API const char* get_cuda_check_suffix() noexcept;
+
+} // namespace cuda
+} // namespace c10

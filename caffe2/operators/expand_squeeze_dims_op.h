@@ -89,9 +89,10 @@ class SqueezeOp : public Operator<Context> {
   static std::vector<int> ComputeDims(
       at::IntArrayRef inputDims,
       std::vector<int> dims) {
-    int j = 0;
+    size_t j = 0;
     std::vector<int> newDims;
-    for (int i = 0; i < inputDims.size(); ++i) {
+    for (size_t i = 0; i < inputDims.size(); ++i) {
+      // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
       if (j < dims.size() && dims[j] == i) {
         CAFFE_ENFORCE_EQ(
             inputDims[i],

@@ -192,7 +192,9 @@ class SwapBestPathOp : public Operator<CPUContext> {
     return true;
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(ViterbiPath, ViterbiPathOp);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(ViterbiPath)
     .NumInputs(2)
     .NumOutputs(1)
@@ -203,19 +205,23 @@ score
     .Input(0, "predictions", "N*D predictions matrix")
     .Input(1, "transitions", "D*D transitions matrix")
     .Output(0, "viterbi_path", "N*1 vector holds the best path indices");
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 NO_GRADIENT(ViterbiPath);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(SwapBestPath, SwapBestPathOp);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SwapBestPath)
     .NumInputs(2)
     .NumOutputs(1)
     .SetDoc(R"DOC(
-Given a sequence of idices and a matrix, enforce that these indices have the
+Given a sequence of indices and a matrix, enforce that these indices have the
 best columnwise scores
 score
 )DOC")
     .Input(0, "predictions", "N*D predictions matrix")
     .Input(1, "bestPath", "N*1 vector holds the best path indices ")
     .Output(0, "new_predictions", "N*D updated predictions matrix");
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 NO_GRADIENT(SwapBestPath);
 } // namespace
 } // namespace caffe2

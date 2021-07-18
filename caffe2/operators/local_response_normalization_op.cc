@@ -31,6 +31,7 @@ bool LRNOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
   float* padded_square_data = padded_square.template mutable_data<float>();
   math::Set<float, CPUContext>(
       padded_square.numel(), 0., padded_square_data, &context_);
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   const float alpha_over_size = alpha_ / size_;
   // go through the images
   for (int n = 0; n < N; ++n) {
@@ -40,9 +41,12 @@ bool LRNOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
                                  &context_);
     // Create the first channel scale
     for (int c = 0; c < size_; ++c) {
-      math::Axpy<float, CPUContext>(
-          H * W, alpha_over_size, padded_square_data + c * H * W,
-          scale_data + image_size * n, &context_);
+      math::Axpy<float, float, CPUContext>(
+          H * W,
+          alpha_over_size,
+          padded_square_data + c * H * W,
+          scale_data + image_size * n,
+          &context_);
     }
     for (int c = 1; c < C; ++c) {
       float* this_scale_slice = scale_data + n * image_size + c * H * W;
@@ -50,13 +54,19 @@ bool LRNOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
       context_.CopyFromCPU<float>(
           H * W, this_scale_slice - H * W, this_scale_slice);
       // add head
-      math::Axpy<float, CPUContext>(
-          H * W, alpha_over_size, padded_square_data + (c + size_ - 1) * H * W,
-          this_scale_slice, &context_);
+      math::Axpy<float, float, CPUContext>(
+          H * W,
+          alpha_over_size,
+          padded_square_data + (c + size_ - 1) * H * W,
+          this_scale_slice,
+          &context_);
       // subtract tail
-      math::Axpy<float, CPUContext>(
-          H * W, -alpha_over_size, padded_square_data + (c - 1) * H * W,
-          this_scale_slice, &context_);
+      math::Axpy<float, float, CPUContext>(
+          H * W,
+          -alpha_over_size,
+          padded_square_data + (c - 1) * H * W,
+          this_scale_slice,
+          &context_);
     }
   }
   math::Powx<float, CPUContext>(
@@ -95,6 +105,7 @@ bool LRNOp<float, CPUContext>::RunOnDeviceWithOrderNHWC() {
   float* padded_square_data = padded_square.template mutable_data<float>();
   math::Set<float, CPUContext>(
       padded_square.numel(), 0., padded_square_data, &context_);
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   const float alpha_over_size = alpha_ / size_;
 
   for (int n = 0; n < num_rows; ++n) {
@@ -152,6 +163,7 @@ bool LRNGradientOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
   math::Set<float, CPUContext>(X.numel(), bias_, scale_data, &context_);
   math::Set<float, CPUContext>(
       padded_ratio.numel(), 0., padded_ratio_data, &context_);
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   const float alpha_over_size = alpha_ / size_;
   // go through the images
   for (int n = 0; n < N; ++n) {
@@ -161,9 +173,12 @@ bool LRNGradientOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
                                  &context_);
     // Create the first channel scale
     for (int c = 0; c < size_; ++c) {
-      math::Axpy<float, CPUContext>(
-          H * W, alpha_over_size, padded_ratio_data + c * H * W,
-          scale_data + image_size * n, &context_);
+      math::Axpy<float, float, CPUContext>(
+          H * W,
+          alpha_over_size,
+          padded_ratio_data + c * H * W,
+          scale_data + image_size * n,
+          &context_);
     }
     for (int c = 1; c < C; ++c) {
       float* this_scale_slice = scale_data + n * image_size + c * H * W;
@@ -171,13 +186,19 @@ bool LRNGradientOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
       context_.CopyFromCPU<float>(
           H * W, this_scale_slice - H * W, this_scale_slice);
       // add head
-      math::Axpy<float, CPUContext>(
-          H * W, alpha_over_size, padded_ratio_data + (c + size_ - 1) * H * W,
-          this_scale_slice, &context_);
+      math::Axpy<float, float, CPUContext>(
+          H * W,
+          alpha_over_size,
+          padded_ratio_data + (c + size_ - 1) * H * W,
+          this_scale_slice,
+          &context_);
       // subtract tail
-      math::Axpy<float, CPUContext>(
-          H * W, -alpha_over_size, padded_ratio_data + (c - 1) * H * W,
-          this_scale_slice, &context_);
+      math::Axpy<float, float, CPUContext>(
+          H * W,
+          -alpha_over_size,
+          padded_ratio_data + (c - 1) * H * W,
+          this_scale_slice,
+          &context_);
     }
   }
 
@@ -186,6 +207,7 @@ bool LRNGradientOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
   Tensor accum_ratio(vector<int64_t>{H, W}, CPU);
   float* accum_ratio_data = accum_ratio.template mutable_data<float>();
 
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   const float cache_ratio = 2. * alpha_ * beta_ / size_;
   const int inverse_pre_pad = size_ - (size_ + 1) / 2;
 
@@ -203,9 +225,8 @@ bool LRNGradientOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
     math::Set<float, CPUContext>(
         accum_ratio.numel(), 0., accum_ratio_data, &context_);
     for (int c = 0; c < size_ - 1; ++c) {
-      math::Axpy<float, CPUContext>(H * W, 1,
-                                    padded_ratio_data + c * H * W,
-                                    accum_ratio_data, &context_);
+      math::Axpy<float, float, CPUContext>(
+          H * W, 1, padded_ratio_data + c * H * W, accum_ratio_data, &context_);
     }
     for (int c = 0; c < C; ++c) {
       for (int hw = 0; hw < H * W; ++hw) {
@@ -250,6 +271,7 @@ bool LRNGradientOp<float, CPUContext>::RunOnDeviceWithOrderNHWC() {
   math::Set<float, CPUContext>(X.numel(), bias_, scale_data, &context_);
   math::Set<float, CPUContext>(
       padded_ratio.numel(), 0., padded_ratio_data, &context_);
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   const float alpha_over_size = alpha_ / size_;
 
   for (int n = 0; n < num_rows; ++n) {
@@ -271,6 +293,7 @@ bool LRNGradientOp<float, CPUContext>::RunOnDeviceWithOrderNHWC() {
   math::Set<float, CPUContext>(
       padded_ratio.numel(), 0., padded_ratio_data, &context_);
   // the ratio 2*alpha*beta/size
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   const float cache_ratio = 2. * alpha_ * beta_ / size_;
   const float* Ydata = Y.data<float>();
 
@@ -297,9 +320,12 @@ bool LRNGradientOp<float, CPUContext>::RunOnDeviceWithOrderNHWC() {
   return true;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(LRN, LRNOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(LRNGradient, LRNGradientOp<float, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(LRN)
     .NumInputs(1)
     .NumOutputs(1, 2)
@@ -497,6 +523,7 @@ Y_scale:
     .Output(0, "Y", "*(type: Tensor`<float>`)* Output tensor.")
     .Output(1, "Y_scale", "*(type: Tensor`<float>`)* Output scale.")
     .InheritOnnxSchema();
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(LRNGradient).NumInputs(3).NumOutputs(1);
 
 class GetLRNGradient : public GradientMakerBase {
@@ -508,5 +535,6 @@ class GetLRNGradient : public GradientMakerBase {
       vector<string>{GI(0)});
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(LRN, GetLRNGradient);
 }  // namespace caffe2

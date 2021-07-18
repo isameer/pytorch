@@ -2,7 +2,9 @@
 
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(ClipTensorByScaling, ClipTensorByScalingOp<CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(ClipTensorByScaling)
     .NumInputs(2, 3)
     .NumOutputs(1)
@@ -24,7 +26,7 @@ OPERATOR_SCHEMA(ClipTensorByScaling)
     .Input(
         2,
         "additional_threshold",
-        "An optional additonal threshold to scale the orignal threshold")
+        "An optional additional threshold to scale the original threshold")
     .Arg("threshold", "Threshold to determine whether to scale down the tensor")
     .Output(
         0,
@@ -32,5 +34,6 @@ OPERATOR_SCHEMA(ClipTensorByScaling)
         "Tensor of floats, which is the same size as the input tensor, "
         "representing the clipped tensor.");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 SHOULD_NOT_DO_GRADIENT(ClipTensorByScaling);
 }; // namespace caffe2

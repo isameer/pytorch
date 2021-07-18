@@ -2,7 +2,9 @@
 
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(BisectPercentile, BisectPercentileOp<CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(BisectPercentile)
     .NumInputs(1)
     .NumOutputs(1)
@@ -46,7 +48,7 @@ OPERATOR_SCHEMA(BisectPercentile)
     R_2 = [0.3, 1.2];
     We will build R = [0.1, 0.4, 0.5, 0.3, 1.2]; besides, we have
     lengths = [3, 2]
-    to indicate the boundries of the percentile information.
+    to indicate the boundaries of the percentile information.
 
 )DOC")
     .Arg(
@@ -87,6 +89,7 @@ OPERATOR_SCHEMA(BisectPercentile)
         "percentile",
         "2D tensor of output with the same dimensions as the input raw_values.");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 NO_GRADIENT(BisectPercentile);
 
 } // namespace caffe2

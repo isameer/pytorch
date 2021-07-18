@@ -7,7 +7,7 @@ namespace {
 const float* getTensorDataPtr(const Tensor& tensor, int t, int n) {
   const auto dims = tensor.sizes();
   CAFFE_ENFORCE_EQ(dims.size(), 3);
-  int offset = (t * dims[1] + n) * dims[2];
+  int64_t offset = (t * dims[1] + n) * dims[2];
   CAFFE_ENFORCE_LT(offset, tensor.numel());
   return tensor.template data<float>() + offset;
 }
@@ -42,6 +42,7 @@ bool CTCGreedyDecoderOp<CPUContext>::RunOnDevice() {
     for (int32_t t = 0; t < seq_len_i; ++t) {
       auto* prob_data = getTensorDataPtr(inputs, t, i);
       int curr_label =
+          // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
           std::max_element(prob_data, prob_data + num_classes) - prob_data;
       if (curr_label != 0 &&
           (!merge_repeated_ || (previous_label != curr_label))) {
@@ -57,7 +58,7 @@ bool CTCGreedyDecoderOp<CPUContext>::RunOnDevice() {
   auto* values =
       Output(VALUES, vector<int64_t>{values_cach_size}, at::dtype<int>());
   int* values_data = values->mutable_data<int>();
-  for (int i = 0; i < values_cach.size(); ++i) {
+  for (size_t i = 0; i < values_cach.size(); ++i) {
     values_data[i] = values_cach.at(i);
   }
   values_cach.clear();
@@ -65,7 +66,9 @@ bool CTCGreedyDecoderOp<CPUContext>::RunOnDevice() {
   return true;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(CTCGreedyDecoder, CTCGreedyDecoderOp<CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(CTCGreedyDecoder)
     .NumInputs(1, 2)
     .NumOutputs(2)
@@ -94,6 +97,7 @@ OPERATOR_SCHEMA(CTCGreedyDecoder)
         "Values vector, size (total_decoded_outputs). "
         "The vector stores the decoded classes")
     .InheritOnnxSchema();
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 SHOULD_NOT_DO_GRADIENT(CTCGreedyDecoder);
 
 } // namespace caffe2

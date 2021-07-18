@@ -138,7 +138,7 @@ class ConvPoolOpBase : public Operator<Context> {
     }
 
     if (global_pooling_) {
-      for (int dim = 0; dim < kernel_.size(); ++dim) {
+      for (size_t dim = 0; dim < kernel_.size(); ++dim) {
         CAFFE_ENFORCE(
             pads_[2 * dim] == 0 && pads_[2 * dim + 1] == 0 &&
                 dilation_[dim] == 1 && stride_[dim] == 1,
@@ -151,7 +151,7 @@ class ConvPoolOpBase : public Operator<Context> {
     // need to clean this up.
     if (operator_def.name().find("Conv") == 0 ||
         operator_def.name().find("Pool") != std::string::npos) {
-      for (int dim = 0; dim < kernel_.size(); ++dim) {
+      for (size_t dim = 0; dim < kernel_.size(); ++dim) {
         CAFFE_ENFORCE_GE(pads_[dim], 0);
         CAFFE_ENFORCE_GE(pads_[kernel_.size() + dim], 0);
         CAFFE_ENFORCE(
@@ -161,7 +161,7 @@ class ConvPoolOpBase : public Operator<Context> {
       }
     }
 
-    for (int dim = 0; dim < kernel_.size(); ++dim) {
+    for (size_t dim = 0; dim < kernel_.size(); ++dim) {
       CAFFE_ENFORCE_GE(kernel_[dim], 0);
       CAFFE_ENFORCE_GE(dilation_[dim], 0);
       CAFFE_ENFORCE_GE(stride_[dim], 0);
@@ -295,7 +295,7 @@ class ConvPoolOpBase : public Operator<Context> {
   }
 
   static void InferOutputSize64(
-      const at::IntList& input_dims,
+      const at::IntArrayRef& input_dims,
       const int output_channel,
       const StorageOrder order,
       const bool global_pooling,
@@ -340,6 +340,7 @@ class ConvPoolOpBase : public Operator<Context> {
       kernel_ = dims;
     } else if (legacy_pad_ != LegacyPadding::NOTSET) {
       int output_unused;
+      // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
       for (int dim = 0; dim < dims.size(); ++dim) {
         ComputeSizeAndPad(
             dims[dim],
@@ -373,6 +374,7 @@ class ConvPoolOpBase : public Operator<Context> {
   void SetDeviceTensor(const std::vector<int>& data, Tensor* tensor) {
     bool reset_tensor_device_ = false;
 
+    // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
     if (tensor->numel() != data.size()) {
       tensor->Resize(data.size());
       reset_tensor_device_ = true;
@@ -408,7 +410,7 @@ class ConvPoolOpBase : public Operator<Context> {
 
   bool RunOnDevice() override {
     if (!global_pooling_) {
-      for (int dim = 0; dim < kernel_.size(); ++dim) {
+      for (size_t dim = 0; dim < kernel_.size(); ++dim) {
         CAFFE_ENFORCE_GT(kernel_[dim], 0);
       }
     }
@@ -460,15 +462,25 @@ class ConvPoolOpBase : public Operator<Context> {
     N = X.dims(0);
     if (X.dims_size() == 5) {
       // 3D convolution
-      CAFFE_ENFORCE_EQ(order, StorageOrder::NCHW, "Conv3D only supports NCHW");
-      Y_t = Y.dims(2);
-      Y_h = Y.dims(3);
-      Y_w = Y.dims(4);
-      kernel_t = W.dims(2);
-      kernel_h = W.dims(3);
-      kernel_w = W.dims(4);
-      in_channels = W.dims(1);
-      out_channels = W.dims(0);
+      if (order == StorageOrder::NHWC) {
+        Y_t = Y.dims(1);
+        Y_h = Y.dims(2);
+        Y_w = Y.dims(3);
+        kernel_t = W.dims(1);
+        kernel_h = W.dims(2);
+        kernel_w = W.dims(3);
+        in_channels = W.dims(4);
+        out_channels = W.dims(0);
+      } else {
+        Y_t = Y.dims(2);
+        Y_h = Y.dims(3);
+        Y_w = Y.dims(4);
+        kernel_t = W.dims(2);
+        kernel_h = W.dims(3);
+        kernel_w = W.dims(4);
+        in_channels = W.dims(1);
+        out_channels = W.dims(0);
+      }
     } else if (X.dims_size() == 4) {
       // 2D convolution
       CAFFE_ENFORCE_EQ(W.dims_size(), 4, "Conv2D should have 4D filter tensor");
@@ -523,7 +535,7 @@ class ConvPoolOpBase : public Operator<Context> {
       const vector<TensorShape>& in,
       int output_channel) {
     ArgumentHelper helper(def);
-    CAFFE_ENFORCE_GT(in.size(), 0);
+    CAFFE_ENFORCE_GT(in.size(), 0U);
     CAFFE_ENFORCE_GT(in[0].dims_size(), 0);
     vector<int> pads = helper.GetRepeatedArgument<int>("pads");
     vector<int> kernel = helper.GetRepeatedArgument<int>("kernels");

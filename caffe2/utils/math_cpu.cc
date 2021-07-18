@@ -110,6 +110,7 @@ C10_EXPORT void Gemm<float, CPUContext>(
           return;
         default:
           LOG(FATAL) << "Unexpected CBLAS_TRANSPOSE for trans_B";
+          return; // The line above calls `abort()`. Should never reach here.
       }
     }
     case CblasTrans: {
@@ -126,6 +127,7 @@ C10_EXPORT void Gemm<float, CPUContext>(
           return;
         default:
           LOG(FATAL) << "Unexpected CBLAS_TRANSPOSE for trans_B";
+          return; // The line above calls `abort()`. Should never reach here.
       }
     }
     default:
@@ -175,6 +177,7 @@ C10_EXPORT void GemmEx<float, CPUContext>(
           return;
         default:
           LOG(FATAL) << "Unexpected CBLAS_TRANSPOSE for trans_B";
+          return; // The line above calls `abort()`. Should never reach here.
       }
     }
     case CblasTrans: {
@@ -198,6 +201,7 @@ C10_EXPORT void GemmEx<float, CPUContext>(
           return;
         default:
           LOG(FATAL) << "Unexpected CBLAS_TRANSPOSE for trans_B";
+          return; // The line above calls `abort()`. Should never reach here.
       }
     }
     default:
@@ -252,46 +256,6 @@ C10_EXPORT void Gemv<float, CPUContext>(
 CAFFE2_SPECIALIZED_DOT(float)
 #undef CAFFE2_SPECIALIZED_DOT
 
-#define CAFFE2_SPECIALIZED_AXPY(T)                                          \
-  template <>                                                               \
-  C10_EXPORT void Axpy<T, CPUContext>(                                      \
-      const int N, const T alpha, const T* x, T* Y, CPUContext* context) {  \
-    EigenVectorMap<T>(Y, N) += ConstEigenVectorMap<T>(x, N) * alpha;        \
-  }                                                                         \
-  template <>                                                               \
-  C10_EXPORT void Axpy<T, CPUContext>(                                      \
-      const int N, const T* alpha, const T* x, T* Y, CPUContext* context) { \
-    EigenVectorMap<T>(Y, N) += ConstEigenVectorMap<T>(x, N) * (*alpha);     \
-  }
-CAFFE2_SPECIALIZED_AXPY(float)
-#undef CAFFE2_SPECIALIZED_AXPY
-
-#define CAFFE2_SPECIALIZED_AXPBY(T)                                     \
-  template <>                                                           \
-  C10_EXPORT void Axpby<T, T, CPUContext>(                              \
-      const int N,                                                      \
-      const T alpha,                                                    \
-      const T* x,                                                       \
-      const T beta,                                                     \
-      T* y,                                                             \
-      CPUContext* context) {                                            \
-    EigenVectorArrayMap<T> y_arr(y, N);                                 \
-    y_arr = y_arr * beta + ConstEigenVectorArrayMap<T>(x, N) * alpha;   \
-  }                                                                     \
-  template <>                                                           \
-  C10_EXPORT void Axpby<T, T, CPUContext>(                              \
-      const int N,                                                      \
-      const T* alpha,                                                   \
-      const T* x,                                                       \
-      const T* beta,                                                    \
-      T* y,                                                             \
-      CPUContext* context) {                                            \
-    EigenVectorArrayMap<T> y_arr(y, N);                                 \
-    y_arr = y_arr * *beta + ConstEigenVectorArrayMap<T>(x, N) * *alpha; \
-  }
-CAFFE2_SPECIALIZED_AXPBY(float)
-#undef CAFFE2_SPECIALIZED_AXPBY
-
 #else // CAFFE2_USE_EIGEN_FOR_BLAS
 
 template <>
@@ -308,8 +272,9 @@ C10_EXPORT void Gemm<float, CPUContext>(
     float* C,
     CPUContext* /*context*/,
     TensorProto::DataType /*math_type*/) {
-  const int lda = (trans_A == CblasNoTrans) ? K : M;
-  const int ldb = (trans_B == CblasNoTrans) ? N : K;
+  // MKL expects ld? >= 1
+  const int lda = std::max((trans_A == CblasNoTrans) ? K : M, 1);
+  const int ldb = std::max((trans_B == CblasNoTrans) ? N : K, 1);
   cblas_sgemm(
       CblasRowMajor,
       trans_A,
@@ -384,72 +349,6 @@ C10_EXPORT void Gemv<float, CPUContext>(
 CAFFE2_SPECIALIZED_DOT(float, s)
 #undef CAFFE2_SPECIALIZED_DOT
 
-#define CAFFE2_SPECIALIZED_AXPY(T, prefix)                          \
-  template <>                                                       \
-  C10_EXPORT void Axpy<T, CPUContext>(                              \
-      const int N, const T alpha, const T* x, T* y, CPUContext*) {  \
-    cblas_##prefix##axpy(N, alpha, x, 1, y, 1);                     \
-  }                                                                 \
-  template <>                                                       \
-  C10_EXPORT void Axpy<T, CPUContext>(                              \
-      const int N, const T* alpha, const T* x, T* y, CPUContext*) { \
-    cblas_##prefix##axpy(N, *alpha, x, 1, y, 1);                    \
-  }
-CAFFE2_SPECIALIZED_AXPY(float, s)
-#undef CAFFE2_SPECIALIZED_AXPY
-
-// cblas_[sd]axpby is not a standard blas function, and if MKL is not present,
-// we will need to implement it.
-#ifdef CAFFE2_USE_MKL
-#define CAFFE2_SPECIALIZED_AXPBY(T, prefix)              \
-  template <>                                            \
-  C10_EXPORT void Axpby<T, T, CPUContext>(               \
-      const int N,                                       \
-      const T alpha,                                     \
-      const T* x,                                        \
-      const T beta,                                      \
-      T* y,                                              \
-      CPUContext*) {                                     \
-    cblas_##prefix##axpby(N, alpha, x, 1, beta, y, 1);   \
-  }                                                      \
-  template <>                                            \
-  C10_EXPORT void Axpby<T, T, CPUContext>(               \
-      const int N,                                       \
-      const T* alpha,                                    \
-      const T* x,                                        \
-      const T* beta,                                     \
-      T* y,                                              \
-      CPUContext*) {                                     \
-    cblas_##prefix##axpby(N, *alpha, x, 1, *beta, y, 1); \
-  }
-#else // CAFFE2_USE_MKL
-#define CAFFE2_SPECIALIZED_AXPBY(T, prefix)      \
-  template <>                                    \
-  C10_EXPORT void Axpby<T, T, CPUContext>(       \
-      const int N,                               \
-      const T alpha,                             \
-      const T* x,                                \
-      const T beta,                              \
-      T* y,                                      \
-      CPUContext*) {                             \
-    cblas_##prefix##scal(N, beta, y, 1);         \
-    cblas_##prefix##axpy(N, alpha, x, 1, y, 1);  \
-  }                                              \
-  template <>                                    \
-  C10_EXPORT void Axpby<T, T, CPUContext>(       \
-      const int N,                               \
-      const T* alpha,                            \
-      const T* x,                                \
-      const T* beta,                             \
-      T* y,                                      \
-      CPUContext*) {                             \
-    cblas_##prefix##scal(N, *beta, y, 1);        \
-    cblas_##prefix##axpy(N, *alpha, x, 1, y, 1); \
-  }
-#endif // CAFFE2_USE_MKL
-CAFFE2_SPECIALIZED_AXPBY(float, s)
-#undef CAFFE2_SPECIALIZED_AXPBY
-
 #endif // CAFFE2_USE_EIGEN_FOR_BLAS
 
 template <>
@@ -469,9 +368,10 @@ C10_EXPORT void GemmBatched<float, CPUContext>(
     TensorProto::DataType /* math_type */) {
 #ifdef CAFFE2_USE_MKL
   (void)context;
-  const int lda = (trans_A == CblasNoTrans) ? K : M;
-  const int ldb = (trans_B == CblasNoTrans) ? N : K;
-  const int ldc = N;
+  // MKL expects ld? >= 1
+  const int lda = std::max((trans_A == CblasNoTrans) ? K : M, 1);
+  const int ldb = std::max((trans_B == CblasNoTrans) ? N : K, 1);
+  const int ldc = std::max(N, 1);
   cblas_sgemm_batch(
       CblasRowMajor,
       &trans_A,
@@ -518,9 +418,10 @@ C10_EXPORT void GemmStridedBatched<float, CPUContext>(
     TensorProto::DataType /* math_type */) {
 #ifdef CAFFE2_USE_MKL
   (void)context;
-  const int lda = (trans_A == CblasNoTrans) ? K : M;
-  const int ldb = (trans_B == CblasNoTrans) ? N : K;
-  const int ldc = N;
+  // MKL expects ld? >= 1
+  const int lda = std::max((trans_A == CblasNoTrans) ? K : M, 1);
+  const int ldb = std::max((trans_B == CblasNoTrans) ? N : K, 1);
+  const int ldc = std::max(N, 1);
   std::vector<const float*> A_array(batch_size);
   std::vector<const float*> B_array(batch_size);
   std::vector<float*> C_array(batch_size);
@@ -586,6 +487,7 @@ C10_EXPORT void BroadcastImpl(
   }
   X_dims = X_dims_vector.data();
   const int Y_size =
+      // NOLINTNEXTLINE(modernize-use-transparent-functors)
       std::accumulate(Y_dims, Y_dims + Y_ndim, 1, std::multiplies<int>());
   std::vector<int> index(Y_ndim, 0);
   for (int Y_index = 0; Y_index < Y_size; ++Y_index) {
@@ -906,6 +808,7 @@ C10_EXPORT void BroadcastBinaryOpImpl(
     TOut* C) {
   std::vector<int> index(ndim, 0);
   const int C_size =
+      // NOLINTNEXTLINE(modernize-use-transparent-functors)
       std::accumulate(C_dims, C_dims + ndim, 1, std::multiplies<int>());
   for (int C_index = 0; C_index < C_size; ++C_index) {
     const int A_index = utils::GetIndexFromDims(ndim, A_dims, index.data());
@@ -968,17 +871,26 @@ C10_EXPORT void BroadcastBinaryOpImpl(
   DELEGATE_2D_BROADCAST_BINARY_FUNCTION(std::int64_t, bool, Func, Op) \
   DELEGATE_2D_BROADCAST_BINARY_FUNCTION(bool, bool, Func, Op)
 
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_2D_COMPARE_FUNCTION(EQ, std::equal_to)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_2D_COMPARE_FUNCTION(NE, std::not_equal_to)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_2D_COMPARE_FUNCTION(LT, std::less)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_2D_COMPARE_FUNCTION(LE, std::less_equal)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_2D_COMPARE_FUNCTION(GT, std::greater)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_2D_COMPARE_FUNCTION(GE, std::greater_equal)
 
 #undef DEFINE_2D_COMPARE_FUNCTION
 
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DELEGATE_2D_BROADCAST_BINARY_FUNCTION(bool, bool, And, std::logical_and)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DELEGATE_2D_BROADCAST_BINARY_FUNCTION(bool, bool, Or, std::logical_or)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DELEGATE_2D_BROADCAST_BINARY_FUNCTION(bool, bool, Xor, std::bit_xor)
 
 #define DEFINE_2D_BROADCAST_BITWISE_BINARY_FUNCTION(Func, Op)                 \
@@ -986,8 +898,11 @@ DELEGATE_2D_BROADCAST_BINARY_FUNCTION(bool, bool, Xor, std::bit_xor)
   DELEGATE_2D_BROADCAST_BINARY_FUNCTION(std::int32_t, std::int32_t, Func, Op) \
   DELEGATE_2D_BROADCAST_BINARY_FUNCTION(std::int64_t, std::int64_t, Func, Op)
 
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_2D_BROADCAST_BITWISE_BINARY_FUNCTION(BitwiseAnd, std::bit_and)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_2D_BROADCAST_BITWISE_BINARY_FUNCTION(BitwiseOr, std::bit_or)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_2D_BROADCAST_BITWISE_BINARY_FUNCTION(BitwiseXor, std::bit_xor)
 
 #undef DEFINE_2D_BROADCAST_BITWISE_BINARY_FUNCTION
@@ -1017,7 +932,9 @@ DEFINE_2D_BROADCAST_BITWISE_BINARY_FUNCTION(BitwiseXor, std::bit_xor)
     ColwiseBinaryOp<T, T, std::divides<T>, true>(  \
         rows, cols, std::divides<T>(), A, B, C);   \
   }
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_2D_BROADCAST_1ST_DIV_FUNCTION(std::int32_t)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_2D_BROADCAST_1ST_DIV_FUNCTION(std::int64_t)
 #undef DEFINE_2D_BROADCAST_1ST_DIV_FUNCTION
 
@@ -1125,11 +1042,17 @@ DEFINE_2D_BROADCAST_1ST_DIV_FUNCTION(std::int64_t)
   DELEGATE_BROADCAST_BINARY_FUNCTION(std::int64_t, bool, Func, Op) \
   DELEGATE_BROADCAST_BINARY_FUNCTION(bool, bool, Func, Op)
 
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_COMPARE_FUNCTION(EQ, std::equal_to)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_COMPARE_FUNCTION(NE, std::not_equal_to)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_COMPARE_FUNCTION(LT, std::less)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_COMPARE_FUNCTION(LE, std::less_equal)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_COMPARE_FUNCTION(GT, std::greater)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_COMPARE_FUNCTION(GE, std::greater_equal)
 
 #undef DEFINE_BROADCAST_COMPARE_FUNCTION
@@ -1140,15 +1063,22 @@ DEFINE_BROADCAST_COMPARE_FUNCTION(GE, std::greater_equal)
   DELEGATE_BROADCAST_BINARY_FUNCTION(std::int32_t, std::int32_t, Func, Op) \
   DELEGATE_BROADCAST_BINARY_FUNCTION(std::int64_t, std::int64_t, Func, Op)
 
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_BINARY_FUNCTION(Add, std::plus)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_BINARY_FUNCTION(Sub, std::minus)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_BINARY_FUNCTION(Mul, std::multiplies)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_BINARY_FUNCTION(Div, std::divides)
 
 #undef DEFINE_BROADCAST_BINARY_FUNCTION
 
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DELEGATE_BROADCAST_BINARY_FUNCTION(bool, bool, And, std::logical_and)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DELEGATE_BROADCAST_BINARY_FUNCTION(bool, bool, Or, std::logical_or)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DELEGATE_BROADCAST_BINARY_FUNCTION(bool, bool, Xor, std::bit_xor)
 
 #define DEFINE_BROADCAST_BITWISE_BINARY_FUNCTION(Func, Op)                 \
@@ -1156,19 +1086,34 @@ DELEGATE_BROADCAST_BINARY_FUNCTION(bool, bool, Xor, std::bit_xor)
   DELEGATE_BROADCAST_BINARY_FUNCTION(std::int32_t, std::int32_t, Func, Op) \
   DELEGATE_BROADCAST_BINARY_FUNCTION(std::int64_t, std::int64_t, Func, Op)
 
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_BITWISE_BINARY_FUNCTION(BitwiseAnd, std::bit_and)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_BITWISE_BINARY_FUNCTION(BitwiseOr, std::bit_or)
+// NOLINTNEXTLINE(modernize-use-transparent-functors)
 DEFINE_BROADCAST_BITWISE_BINARY_FUNCTION(BitwiseXor, std::bit_xor)
 
 #undef DEFINE_BITWISE_BROADCAST_BINARY_FUNCTION
 
 #undef DELEGATE_BROADCAST_BINARY_FUNCTION
 
+namespace {
+// incrementIfNotMax increments the number if the value is not max for that
+// datatype. This ensures that the value never overflows.
+template <typename T>
+inline T incrementIfNotMax(T a) {
+  if (a == std::numeric_limits<T>::max()) {
+    return a;
+  }
+  return a + 1;
+}
+} // namespace
+
 #define CAFFE2_RAND_UNIFORM_REAL(T)                                      \
   template <>                                                            \
   C10_EXPORT void RandUniform<T, CPUContext>(                            \
       const size_t n, const T a, const T b, T* r, CPUContext* context) { \
-    std::uniform_real_distribution<T> distribution(a, b);                \
+    at::uniform_real_distribution<T> distribution(a, b);                 \
     for (size_t i = 0; i < n; ++i) {                                     \
       r[i] = distribution(context->RandGenerator());                     \
     }                                                                    \
@@ -1177,14 +1122,15 @@ CAFFE2_RAND_UNIFORM_REAL(float);
 CAFFE2_RAND_UNIFORM_REAL(double);
 #undef CAFFE2_RAND_UNIFORM_REAL
 
-#define CAFFE2_RAND_UNIFORM_CHAR(T)                                        \
-  template <>                                                              \
-  C10_EXPORT void RandUniform<T, CPUContext>(                              \
-      const size_t n, const T a, const T b, T* r, CPUContext* context) {   \
-    std::uniform_int_distribution<short> distribution((short)a, (short)b); \
-    for (size_t i = 0; i < n; ++i) {                                       \
-      r[i] = static_cast<T>(distribution(context->RandGenerator()));       \
-    }                                                                      \
+#define CAFFE2_RAND_UNIFORM_CHAR(T)                                      \
+  template <>                                                            \
+  C10_EXPORT void RandUniform<T, CPUContext>(                            \
+      const size_t n, const T a, const T b, T* r, CPUContext* context) { \
+    at::uniform_int_from_to_distribution<short> distribution(            \
+        incrementIfNotMax(b - a), a);                                    \
+    for (size_t i = 0; i < n; ++i) {                                     \
+      r[i] = static_cast<T>(distribution(context->RandGenerator()));     \
+    }                                                                    \
   }
 CAFFE2_RAND_UNIFORM_CHAR(int8_t);
 CAFFE2_RAND_UNIFORM_CHAR(uint8_t);
@@ -1194,7 +1140,10 @@ CAFFE2_RAND_UNIFORM_CHAR(uint8_t);
   template <>                                                            \
   C10_EXPORT void RandUniform<T, CPUContext>(                            \
       const size_t n, const T a, const T b, T* r, CPUContext* context) { \
-    std::uniform_int_distribution<T> distribution(a, b);                 \
+    at::uniform_int_from_to_distribution<T> distribution(                \
+        incrementIfNotMax(                                               \
+            static_cast<uint64_t>(b) - static_cast<uint64_t>(a)),        \
+        a);                                                              \
     for (size_t i = 0; i < n; ++i) {                                     \
       r[i] = distribution(context->RandGenerator());                     \
     }                                                                    \
@@ -1234,7 +1183,7 @@ CAFFE2_RAND_UNIFORM_INT(uint64_t);
       auto remaining_numbers = n - 1 - i;                                 \
       double mean = (sum - current_sum) / (remaining_numbers + 1);        \
       double stdev = std::min(mean - a, b - mean);                        \
-      std::normal_distribution<double> distribution{mean, stdev / 4.0};   \
+      at::normal_distribution<double> distribution{mean, stdev / 4.0};    \
       T value, remaining_sum_test;                                        \
       do {                                                                \
         value = distribution(context->RandGenerator());                   \
@@ -1255,13 +1204,21 @@ CAFFE2_RAND_UNIFORM_INT(uint64_t);
   }
 CAFFE2_RAND_FIXED_SUM(float);
 CAFFE2_RAND_FIXED_SUM(double);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare,bugprone-integer-division)
 CAFFE2_RAND_FIXED_SUM(int8_t);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare,bugprone-integer-division)
 CAFFE2_RAND_FIXED_SUM(int16_t);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare,bugprone-integer-division)
 CAFFE2_RAND_FIXED_SUM(int32_t);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare,bugprone-integer-division)
 CAFFE2_RAND_FIXED_SUM(int64_t);
+// NOLINTNEXTLINE(bugprone-integer-division)
 CAFFE2_RAND_FIXED_SUM(uint8_t);
+// NOLINTNEXTLINE(bugprone-integer-division)
 CAFFE2_RAND_FIXED_SUM(uint16_t);
+// NOLINTNEXTLINE(bugprone-integer-division)
 CAFFE2_RAND_FIXED_SUM(uint32_t);
+// NOLINTNEXTLINE(bugprone-integer-division)
 CAFFE2_RAND_FIXED_SUM(uint64_t);
 #undef CAFFE2_RAND_FIXED_SUM
 
@@ -1306,7 +1263,7 @@ Ind_t generate_stack_distance(
     return cum_val[j];
   } else {
     // iterate until you find the cum_val corresponding to u <= cum_dis[j]
-    for (j = 0; j < cum_dis.size(); j++) {
+    for (j = 0; j < Ind_t(cum_dis.size()); j++) {
       f = cum_dis[j];
       if (u <= f) {
         return cum_val[j];
@@ -1374,11 +1331,15 @@ C10_EXPORT void generate_trace_lru(
     // patch mem_ref to be within range
     // WARNING: this should not be needed if instantiation type and distribution
     // choice is correct. It is remeding a symptom of earlier mistakes.
+    // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
     if (mem_ref < min) {
+      // NOLINTNEXTLINE(bugprone-signed-char-misuse)
       mem_ref = min;
       // std::cout << "clamping (min) mem_ref=" << mem_ref << std::endl;
     }
+    // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
     if (mem_ref > max) {
+      // NOLINTNEXTLINE(bugprone-signed-char-misuse)
       mem_ref = max; // mem_ref % max;
       // std::cout << "clamping (max) mem_ref=" << mem_ref << std::endl;
     }
@@ -1419,15 +1380,25 @@ C10_EXPORT void generate_trace_lru(
         mem_ref, cum_val, cum_dis, cum_map, context, cache_line, n, a, b, r); \
   }
 
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare)
 CAFFE2_RAND_SYNTHETIC_DATA(float);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare)
 CAFFE2_RAND_SYNTHETIC_DATA(double);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare)
 CAFFE2_RAND_SYNTHETIC_DATA(int8_t);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare)
 CAFFE2_RAND_SYNTHETIC_DATA(int16_t);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare)
 CAFFE2_RAND_SYNTHETIC_DATA(int32_t);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare)
 CAFFE2_RAND_SYNTHETIC_DATA(int64_t);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare)
 CAFFE2_RAND_SYNTHETIC_DATA(uint8_t);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare)
 CAFFE2_RAND_SYNTHETIC_DATA(uint16_t);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare)
 CAFFE2_RAND_SYNTHETIC_DATA(uint32_t);
+// NOLINTNEXTLINE(clang-diagnostic-sign-compare)
 CAFFE2_RAND_SYNTHETIC_DATA(uint64_t);
 #undef CAFFE2_RAND_SYNTHETIC_DATA
 
@@ -1449,7 +1420,8 @@ CAFFE2_RAND_SYNTHETIC_DATA(uint64_t);
       CAFFE_ENFORCE_EQ(                                              \
           m, avoid_set.size(), "AC10_EXPORT void should be unique"); \
     }                                                                \
-    std::uniform_int_distribution<T> distribution(a, b);             \
+    at::uniform_int_from_to_distribution<T> distribution(            \
+        incrementIfNotMax(b - a), a);                                \
     T v = 0;                                                         \
     for (size_t i = 0; i < n; ++i) {                                 \
       do {                                                           \
@@ -1471,7 +1443,7 @@ C10_EXPORT void RandGaussian<float, CPUContext>(
     const float std,
     float* r,
     CPUContext* context) {
-  std::normal_distribution<float> distribution(mean, std);
+  at::normal_distribution<float> distribution(mean, std);
   for (size_t i = 0; i < n; ++i) {
     r[i] = distribution(context->RandGenerator());
   }
@@ -1505,6 +1477,16 @@ C10_EXPORT void SumSqr<float, CPUContext>(
 }
 
 template <>
+C10_EXPORT void SumSqr<double, CPUContext>(
+    const int N,
+    const double* x,
+    double* y,
+    CPUContext* /*context*/ /* unused */,
+    Tensor* /*scratch_ptr*/ /* unused */) {
+  *y = ConstEigenVectorMap<double>(x, N).squaredNorm();
+}
+
+template <>
 C10_EXPORT void Select<float, CPUContext>(
     const int N,
     const int D,
@@ -1533,7 +1515,7 @@ C10_EXPORT void CopyMatrix<CPUContext>(
     return;
   }
   if (lda == N && ldb == N) {
-    // can coalese to a single memcpy of size M * N
+    // can coalesce to a single memcpy of size M * N
     if (copy) {
       copy(static_cast<const char*>(A), static_cast<char*>(B), N * M);
     } else {
@@ -1823,6 +1805,7 @@ C10_EXPORT void Im2ColNdNCHWImpl(
   const int outer_size = col_shape[0];
   const int inner_size = col_size / outer_size;
   const int kernel_size = std::accumulate(
+      // NOLINTNEXTLINE(modernize-use-transparent-functors)
       kernel_shape, kernel_shape + N, 1, std::multiplies<int>());
   std::vector<FixedDivisor<int>> kernel_shape_div(N);
   for (int i = 0; i < N; ++i) {
@@ -2793,271 +2776,8 @@ C10_EXPORT void BiasCHW<float, CPUContext>(
     }                                                               \
   }
 CAFFE2_SPECIALIZED_COPYVECTOR(float)
+CAFFE2_SPECIALIZED_COPYVECTOR(int32_t)
 #undef CAFFE2_SPECIALIZED_COPYVECTOR
-
-namespace {
-
-#ifdef CAFFE2_USE_HPTT
-
-bool TransposeWithHPTT(
-    const int ndim,
-    const int* dims,
-    const int* axes,
-    const float* X,
-    float* Y) {
-  std::vector<int> axes_cm(ndim);
-  std::vector<int> dims_cm(ndim);
-  // Convert row-major index to column-major.
-  const auto cm_fn = [ndim](const int i) { return ndim - i - 1; };
-  for (int i = 0; i < ndim; ++i) {
-    axes_cm[i] = cm_fn(axes[cm_fn(i)]);
-    dims_cm[i] = dims[cm_fn(i)];
-  }
-
-  // HPTT doesn't handle 0 sized inputs.
-  for (auto dim : dims_cm) {
-    if (dim <= 0) {
-      return false;
-    }
-  }
-  auto plan = hptt::create_plan(
-      axes_cm.data(),
-      ndim,
-      1.0,
-      X,
-      dims_cm.data(),
-      nullptr,
-      0.0,
-      Y,
-      nullptr,
-      hptt::ESTIMATE,
-      1);
-  if (plan == nullptr) {
-    return false;
-  }
-  plan->execute();
-  return true;
-}
-
-#endif // CAFFE2_USE_HPTT
-
-template <typename T>
-void Transpose2D(const int rows, const int cols, const T* X, T* Y);
-
-#ifdef CAFFE2_USE_MKL
-
-#define DELEGATE_TRANSPOSE_2D_FUNCTION(T, Func)                           \
-  template <>                                                             \
-  void Transpose2D<T>(const int rows, const int cols, const T* X, T* Y) { \
-    Func('R', 'T', rows, cols, T(1), X, cols, Y, rows);                   \
-  }
-DELEGATE_TRANSPOSE_2D_FUNCTION(float, mkl_somatcopy);
-DELEGATE_TRANSPOSE_2D_FUNCTION(double, mkl_domatcopy);
-#undef DELEGATE_TRANSPOSE_2D_FUNCTION
-
-#endif // CAFFE2_USE_MKL
-
-#define CAFFE2_SPECIALIZED_TRANSPOSE_2D(T)                                \
-  template <>                                                             \
-  void Transpose2D<T>(const int rows, const int cols, const T* X, T* Y) { \
-    EigenMatrixMap<T>(Y, rows, cols) =                                    \
-        ConstEigenMatrixMap<T>(X, cols, rows).transpose();                \
-  }
-
-#ifndef CAFFE2_USE_MKL
-
-template <>
-void Transpose2D<float>(
-    const int rows,
-    const int cols,
-    const float* X,
-    float* Y) {
-#ifdef CAFFE2_USE_HPTT
-  const std::array<int, 2> dims = {rows, cols};
-  const std::array<int, 2> axes = {1, 0};
-  if (TransposeWithHPTT(2, dims.data(), axes.data(), X, Y)) {
-    return;
-  }
-#endif // CAFFE2_USE_HPTT
-  EigenMatrixMap<float>(Y, rows, cols) =
-      ConstEigenMatrixMap<float>(X, cols, rows).transpose();
-}
-
-CAFFE2_SPECIALIZED_TRANSPOSE_2D(double)
-
-#endif // CAFFE2_USE_MKL
-
-CAFFE2_SPECIALIZED_TRANSPOSE_2D(int)
-CAFFE2_SPECIALIZED_TRANSPOSE_2D(int64_t)
-CAFFE2_SPECIALIZED_TRANSPOSE_2D(std::uint8_t)
-CAFFE2_SPECIALIZED_TRANSPOSE_2D(std::uint16_t)
-
-#undef CAFFE2_SPECIALIZED_TRANSPOSE_2D
-
-std::vector<int>
-ComputeXStrides(const int ndim, const int* dims, const int* axes) {
-  std::vector<int> x_strides(ndim);
-  std::vector<int> buff(ndim);
-  int cur_stride = 1;
-  for (int i = ndim - 1; i >= 0; --i) {
-    buff[i] = cur_stride;
-    cur_stride *= dims[i];
-  }
-  for (int i = 0; i < ndim; ++i) {
-    x_strides[i] = buff[axes[i]];
-  }
-  return x_strides;
-}
-
-template <typename T>
-void TransposeND(
-    const int ndim,
-    const int* dims,
-    const int* axes,
-    const T* X,
-    T* Y) {
-  std::vector<int> Y_dims(ndim);
-  for (int i = 0; i < ndim; ++i) {
-    Y_dims[i] = dims[axes[i]];
-  }
-  // Measure amount of contiguous data we can copy at once
-  int block_size = 1;
-  int num_shared_idx = 0;
-  for (int i = ndim - 1; i >= 0 && axes[i] == i; --i) {
-    block_size *= Y_dims[i];
-    ++num_shared_idx;
-  }
-  const int itr_axes = ndim - num_shared_idx;
-  const int num_blocks = std::accumulate(
-      Y_dims.cbegin(), Y_dims.cbegin() + itr_axes, 1, std::multiplies<int>());
-  const std::vector<int> X_strides = ComputeXStrides(itr_axes, dims, axes);
-  std::vector<int> index(itr_axes, 0);
-  for (int Y_index = 0; Y_index < num_blocks; ++Y_index) {
-    const int X_index = std::inner_product(
-        X_strides.cbegin(), X_strides.cend(), index.cbegin(), 0);
-    if (block_size == 1) {
-      Y[Y_index] = X[X_index];
-    } else {
-      std::memcpy(
-          Y + block_size * Y_index,
-          X + block_size * X_index,
-          block_size * sizeof(T));
-    }
-    utils::IncreaseIndexInDims(itr_axes, Y_dims.data(), index.data());
-  }
-}
-
-template <typename T>
-void TransposeCPUImpl(
-    const int ndim,
-    const int* dims,
-    const int* axes,
-    const T* X,
-    T* Y) {
-  if (utils::IsIdentityPermutation(ndim, axes)) {
-    const int size =
-        std::accumulate(dims, dims + ndim, 1, std::multiplies<int>());
-    std::memcpy(Y, X, size * sizeof(T));
-    return;
-  }
-  if (utils::IsBatchTranspose2D(ndim, axes)) {
-    const int N =
-        std::accumulate(dims, dims + ndim - 2, 1, std::multiplies<int>());
-    const int H = dims[ndim - 2];
-    const int W = dims[ndim - 1];
-    for (int i = 0; i < N; ++i) {
-      Transpose2D<T>(H, W, X + i * H * W, Y + i * H * W);
-    }
-    return;
-  }
-  TransposeND<T>(ndim, dims, axes, X, Y);
-}
-
-template <>
-void TransposeCPUImpl(
-    const int ndim,
-    const int* dims,
-    const int* axes,
-    const float* X,
-    float* Y) {
-  if (utils::IsIdentityPermutation(ndim, axes)) {
-    const int size =
-        std::accumulate(dims, dims + ndim, 1, std::multiplies<int>());
-    std::memcpy(Y, X, size * sizeof(float));
-    return;
-  }
-  if (utils::IsBatchTranspose2D(ndim, axes)) {
-    const int N =
-        std::accumulate(dims, dims + ndim - 2, 1, std::multiplies<int>());
-    const int H = dims[ndim - 2];
-    const int W = dims[ndim - 1];
-    for (int i = 0; i < N; ++i) {
-      Transpose2D<float>(H, W, X + i * H * W, Y + i * H * W);
-    }
-    return;
-  }
-#ifdef CAFFE2_USE_HPTT
-  if (TransposeWithHPTT(ndim, dims, axes, X, Y)) {
-    return;
-  }
-#endif
-  TransposeND<float>(ndim, dims, axes, X, Y);
-}
-
-} // namespace
-
-#define CAFFE2_SPECIALIZED_TRANSPOSE(T)       \
-  template <>                                 \
-  C10_EXPORT void Transpose<T, CPUContext>(   \
-      const int ndim,                         \
-      const int* dims,                        \
-      const int* axes,                        \
-      const T* X,                             \
-      T* Y,                                   \
-      CPUContext* /* context */) {            \
-    TransposeCPUImpl(ndim, dims, axes, X, Y); \
-  }
-CAFFE2_SPECIALIZED_TRANSPOSE(float)
-CAFFE2_SPECIALIZED_TRANSPOSE(double)
-CAFFE2_SPECIALIZED_TRANSPOSE(int)
-CAFFE2_SPECIALIZED_TRANSPOSE(int64_t)
-CAFFE2_SPECIALIZED_TRANSPOSE(std::uint8_t)
-CAFFE2_SPECIALIZED_TRANSPOSE(std::uint16_t)
-#undef CAFFE2_SPECIALIZED_TRANSPOSE
-
-#define CAFFE2_SPECIALIZED_NCHW2NHWC(T)                       \
-  template <>                                                 \
-  C10_EXPORT void NCHW2NHWC<T, CPUContext>(                   \
-      const int N,                                            \
-      const int C,                                            \
-      const int HxW,                                          \
-      const T* X,                                             \
-      T* Y,                                                   \
-      CPUContext* /* context */) {                            \
-    const int stride = C * HxW;                               \
-    for (int i = 0; i < N; ++i) {                             \
-      Transpose2D<T>(C, HxW, X + i * stride, Y + i * stride); \
-    }                                                         \
-  }
-CAFFE2_SPECIALIZED_NCHW2NHWC(float)
-#undef CAFFE2_SPECIALIZED_NCHW2NHWC
-
-#define CAFFE2_SPECIALIZED_NHWC2NCHW(T)                       \
-  template <>                                                 \
-  C10_EXPORT void NHWC2NCHW<T, CPUContext>(                   \
-      const int N,                                            \
-      const int C,                                            \
-      const int HxW,                                          \
-      const T* X,                                             \
-      T* Y,                                                   \
-      CPUContext* /* context */) {                            \
-    const int stride = HxW * C;                               \
-    for (int i = 0; i < N; ++i) {                             \
-      Transpose2D<T>(HxW, C, X + i * stride, Y + i * stride); \
-    }                                                         \
-  }
-CAFFE2_SPECIALIZED_NHWC2NCHW(float)
-#undef CAFFE2_SPECIALIZED_NHWC2NCHW
 
 } // namespace math
 } // namespace caffe2

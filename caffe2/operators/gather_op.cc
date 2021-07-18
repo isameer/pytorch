@@ -1,8 +1,10 @@
 #include "gather_op.h"
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(Gather, GatherOp<CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(Gather)
     .NumInputs(2)
     .NumOutputs(1)
@@ -79,12 +81,14 @@ OUTPUT:
                                 const vector<TensorShape>& in) {
       ArgumentHelper helper(def);
       const int axis = helper.GetSingleArgument<int>("axis", 0);
+      const bool match_outer =
+          helper.GetSingleArgument<bool>("match_outer", false);
       const auto& data_dims = GetDimsVector(in[0]);
       const auto& indices_dims = GetDimsVector(in[1]);
 
       vector<int> output_dims =
           caffe2::gather_helper::calc_output_shape_vector<int>(
-              data_dims, indices_dims, axis);
+              data_dims, indices_dims, axis, match_outer);
       vector<TensorShape> out(1);
       out[0] = CreateTensorShape(output_dims, in[0].data_type());
       return out;
@@ -144,6 +148,7 @@ class GetGatherGradient : public GradientMakerBase {
         std::vector<Argument>{axisArg});
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(Gather, GetGatherGradient);
 
 } // namespace caffe2

@@ -1,16 +1,20 @@
 #pragma once
 
-#include <ATen/core/ATenGeneral.h>
-#include <ATen/Context.h>
-#include <c10/cuda/CUDAStream.h>
-#include <ATen/cuda/Exceptions.h>
-#include <c10/cuda/CUDAFunctions.h>
-
 #include <cstdint>
 
 #include <cuda_runtime_api.h>
 #include <cusparse.h>
 #include <cublas_v2.h>
+
+#ifdef CUDART_VERSION
+#include <cusolverDn.h>
+#endif
+
+#include <ATen/core/ATenGeneral.h>
+#include <ATen/Context.h>
+#include <c10/cuda/CUDAStream.h>
+#include <c10/cuda/CUDAFunctions.h>
+#include <ATen/cuda/Exceptions.h>
 
 namespace at {
 namespace cuda {
@@ -36,36 +40,41 @@ It is expected that the modules whose functions compose this interface will
 manage their own state. There is only a single CUDA context/state.
 */
 
-/* Device info */
+/**
+ * DEPRECATED: use device_count() instead
+ */
 inline int64_t getNumGPUs() {
     return c10::cuda::device_count();
 }
 
 /**
- * In some situations, you may have compiled with CUDA, but no CUDA
- * device is actually available.  Test for this case using is_available().
+ * CUDA is available if we compiled with CUDA, and there are one or more
+ * devices.  If we compiled with CUDA but there is a driver problem, etc.,
+ * this function will report CUDA is not available (rather than raise an error.)
  */
 inline bool is_available() {
-    int count;
-    cudaError_t err = cudaGetDeviceCount(&count);
-    if (err == cudaErrorInsufficientDriver) {
-      return false;
-    }
-    return count > 0;
+    return c10::cuda::device_count() > 0;
 }
 
-CAFFE2_API cudaDeviceProp* getCurrentDeviceProperties();
+TORCH_CUDA_CPP_API cudaDeviceProp* getCurrentDeviceProperties();
 
-CAFFE2_API int warp_size();
+TORCH_CUDA_CPP_API int warp_size();
 
-CAFFE2_API cudaDeviceProp* getDeviceProperties(int64_t device);
+TORCH_CUDA_CPP_API cudaDeviceProp* getDeviceProperties(int64_t device);
 
-CAFFE2_API Allocator* getCUDADeviceAllocator();
+TORCH_CUDA_CPP_API bool canDeviceAccessPeer(
+    int64_t device,
+    int64_t peer_device);
+
+TORCH_CUDA_CPP_API Allocator* getCUDADeviceAllocator();
 
 /* Handles */
-CAFFE2_API cusparseHandle_t getCurrentCUDASparseHandle();
-CAFFE2_API cublasHandle_t getCurrentCUDABlasHandle();
+TORCH_CUDA_CPP_API cusparseHandle_t getCurrentCUDASparseHandle();
+TORCH_CUDA_CPP_API cublasHandle_t getCurrentCUDABlasHandle();
 
+#ifdef CUDART_VERSION
+TORCH_CUDA_CPP_API cusolverDnHandle_t getCurrentCUDASolverDnHandle();
+#endif
 
 } // namespace cuda
 } // namespace at

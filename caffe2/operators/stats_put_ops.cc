@@ -11,11 +11,13 @@ namespace caffe2 {
   };                                                                   \
   REGISTER_CPU_OPERATOR(OP_NAME, TemplatePutOp<STAT_NAME>);
 
+// NOLINTNEXTLINE(modernize-pass-by-value,cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_TEMPLATED_STAT_PUT_OP(
     AveragePut,
     AveragePutStat,
     CAFFE_AVG_EXPORTED_STAT)
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(AveragePut)
     .NumInputs(1)
     .NumOutputs(0)
@@ -30,7 +32,7 @@ OPERATOR_SCHEMA(AveragePut)
         "(*boolean*): whether or not to clamp inputs to the max inputs allowed")
     .Arg(
         "default_value",
-        "(*float*): Optionally provide a default value for recieving empty tensors")
+        "(*float*): Optionally provide a default value for receiving empty tensors")
     .SetDoc(R"DOC(
     Consume a value and pushes it to the global stat registry as an average.
 
@@ -43,11 +45,13 @@ OPERATOR_SCHEMA(AveragePut)
         "value",
         "(*Tensor`<number>`*): A scalar tensor, representing any numeric value");
 
+// NOLINTNEXTLINE(modernize-pass-by-value,cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_TEMPLATED_STAT_PUT_OP(
     IncrementPut,
     IncrementPutStat,
     CAFFE_EXPORTED_STAT)
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(IncrementPut)
     .NumInputs(1)
     .NumOutputs(0)
@@ -62,7 +66,7 @@ OPERATOR_SCHEMA(IncrementPut)
         "(*boolean*): whether or not to clamp inputs to the max inputs allowed")
     .Arg(
         "default_value",
-        "(*float*): Optionally provide a default value for recieving empty tensors")
+        "(*float*): Optionally provide a default value for receiving empty tensors")
     .SetDoc(R"DOC(
     Consume a value and pushes it to the global stat registry as an sum.
 
@@ -75,11 +79,13 @@ OPERATOR_SCHEMA(IncrementPut)
         "value",
         "(*Tensor`<number>`*): A scalar tensor, representing any numeric value");
 
+// NOLINTNEXTLINE(modernize-pass-by-value,cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_TEMPLATED_STAT_PUT_OP(
     StdDevPut,
     StdDevPutStat,
     CAFFE_STDDEV_EXPORTED_STAT)
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(StdDevPut)
     .NumInputs(1)
     .NumOutputs(0)
@@ -94,7 +100,7 @@ OPERATOR_SCHEMA(StdDevPut)
         "(*boolean*): whether or not to clamp inputs to the max inputs allowed")
     .Arg(
         "default_value",
-        "(*float*): Optionally provide a default value for recieving empty tensors")
+        "(*float*): Optionally provide a default value for receiving empty tensors")
     .SetDoc(R"DOC(
       Consume a value and pushes it to the global stat registry as an standard deviation.
 

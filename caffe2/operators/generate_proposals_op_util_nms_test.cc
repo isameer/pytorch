@@ -3,8 +3,11 @@
 
 #include <gtest/gtest.h>
 
+#include <c10/util/irange.h>
+
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(UtilsNMSTest, TestNMS) {
   Eigen::ArrayXXf input(5, 5);
   input << 10, 10, 50, 60, 0.5, 11, 12, 48, 60, 0.7, 8, 9, 40, 50, 0.6, 100,
@@ -18,8 +21,9 @@ TEST(UtilsNMSTest, TestNMS) {
   // test utils::nms_cpu without indices input
   auto proposals = input.block(0, 0, input.rows(), 4);
   auto scores = input.col(4);
-  for (int i = 0; i < input_thresh.size(); i++) {
-    auto cur_out = utils::nms_cpu(proposals, scores, input_thresh[i]);
+  for (const auto i : c10::irange(input_thresh.size())) {
+    auto cur_out = utils::nms_cpu(
+        proposals, scores, input_thresh[i], true /* legacy_plus_one */);
     EXPECT_EQ(output_gt[i], cur_out);
   }
 
@@ -30,22 +34,34 @@ TEST(UtilsNMSTest, TestNMS) {
       indices.data(),
       indices.data() + indices.size(),
       [&scores](int lhs, int rhs) { return scores(lhs) > scores(rhs); });
-  for (int i = 0; i < input_thresh.size(); i++) {
-    auto cur_out = utils::nms_cpu(proposals, scores, indices, input_thresh[i]);
+  for (const auto i : c10::irange(input_thresh.size())) {
+    auto cur_out = utils::nms_cpu(
+        proposals,
+        scores,
+        indices,
+        input_thresh[i],
+        -1, /* topN */
+        true /* legacy_plus_one */);
     EXPECT_EQ(output_gt[i], cur_out);
   }
 
   // test utils::nms_cpu with topN
   std::vector<int> top_n = {1, 1, 2, 2, 3};
   auto gt_out = output_gt;
-  for (int i = 0; i < input_thresh.size(); i++) {
-    auto cur_out =
-        utils::nms_cpu(proposals, scores, indices, input_thresh[i], top_n[i]);
+  for (const auto i : c10::irange(input_thresh.size())) {
+    auto cur_out = utils::nms_cpu(
+        proposals,
+        scores,
+        indices,
+        input_thresh[i],
+        top_n[i],
+        true /* legacy_plus_one */);
     gt_out[i].resize(top_n[i]);
     EXPECT_EQ(gt_out[i], cur_out);
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(UtilsNMSTest, TestNMS1) {
   Eigen::ArrayXXf proposals(53, 4);
   proposals << 350.9821, 161.8200, 369.9685, 205.2372, 250.5236, 154.2844,
@@ -92,11 +108,13 @@ TEST(UtilsNMSTest, TestNMS1) {
                              18, 19, 21, 23, 24, 25, 26, 30, 32,
                              33, 34, 35, 37, 43, 44, 47, 50};
 
-  auto cur_out = utils::nms_cpu(proposals, scores, 0.5);
+  auto cur_out =
+      utils::nms_cpu(proposals, scores, 0.5, true /* legacy_plus_one */);
   std::sort(cur_out.begin(), cur_out.end());
   EXPECT_EQ(output_gt, cur_out);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(UtilsNMSTest, TestSoftNMS) {
   Eigen::ArrayXXf input(5, 5);
   input.row(0) << 5.18349426e+02, 1.77783920e+02, 9.06085266e+02,
@@ -136,7 +154,7 @@ TEST(UtilsNMSTest, TestSoftNMS) {
       9.99834776e-01, 9.99737203e-01;
 
   Eigen::ArrayXf out_scores;
-  for (int i = 0; i < method.size(); ++i) {
+  for (const auto i : c10::irange(method.size())) {
     LOG(INFO) << "Testing SoftNMS with method=" << method[i]
               << ", overlap_thresh=" << overlap_thresh[i];
     const auto& expected_scores = scores_gt.col(i);
@@ -148,7 +166,9 @@ TEST(UtilsNMSTest, TestSoftNMS) {
         0.5,
         overlap_thresh[i],
         0.0001,
-        method[i]);
+        method[i],
+        -1, /* topN */
+        true /* legacy_plus_one */);
     EXPECT_EQ(keep, keep_gt);
     {
       auto diff = expected_scores - out_scores;
@@ -165,7 +185,8 @@ TEST(UtilsNMSTest, TestSoftNMS) {
           overlap_thresh[i],
           0.0001,
           method[i],
-          topN);
+          topN,
+          true /* legacy_plus_one */);
       std::vector<int> expected_keep(keep_gt.begin(), keep_gt.begin() + topN);
       EXPECT_EQ(expected_keep, keep);
     }
@@ -180,7 +201,9 @@ TEST(UtilsNMSTest, TestSoftNMS) {
         0.5,
         overlap_thresh[i],
         0.0001,
-        method[i]);
+        method[i],
+        -1, /* topN */
+        true /* legacy_plus_one */);
     std::sort(keep.begin(), keep.end());
     EXPECT_EQ(indices, keep);
     {
@@ -198,7 +221,9 @@ TEST(UtilsNMSTest, TestSoftNMS) {
         0.5,
         overlap_thresh[i],
         score_thresh,
-        method[i]);
+        method[i],
+        -1, /* topN */
+        true /* legacy_plus_one */);
     {
       auto expected_keep =
           utils::GetArrayIndices(expected_scores >= score_thresh);
@@ -212,7 +237,7 @@ TEST(UtilsNMSTest, TestSoftNMS) {
   }
 }
 
-#if defined(CV_MAJOR_VERSION) && (CV_MAJOR_VERSION >= 3)
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(UtilsNMSTest, TestNMSRotatedAngle0) {
   // Same inputs as TestNMS, but in RRPN format with angle 0 for testing
   // nms_cpu_rotated
@@ -235,8 +260,9 @@ TEST(UtilsNMSTest, TestNMSRotatedAngle0) {
   proposals.col(3) = input.col(3) - input.col(1) + 1.0; // h = y2 - y1 + 1
 
   auto scores = input.col(4);
-  for (int i = 0; i < input_thresh.size(); i++) {
-    auto cur_out = utils::nms_cpu(proposals, scores, input_thresh[i]);
+  for (const auto i : c10::irange(input_thresh.size())) {
+    auto cur_out = utils::nms_cpu(
+        proposals, scores, input_thresh[i], true /* legacy_plus_one */);
     EXPECT_EQ(output_gt[i], cur_out);
   }
 
@@ -247,22 +273,34 @@ TEST(UtilsNMSTest, TestNMSRotatedAngle0) {
       indices.data(),
       indices.data() + indices.size(),
       [&scores](int lhs, int rhs) { return scores(lhs) > scores(rhs); });
-  for (int i = 0; i < input_thresh.size(); i++) {
-    auto cur_out = utils::nms_cpu(proposals, scores, indices, input_thresh[i]);
+  for (const auto i : c10::irange(input_thresh.size())) {
+    auto cur_out = utils::nms_cpu(
+        proposals,
+        scores,
+        indices,
+        input_thresh[i],
+        -1, /* topN */
+        true /* legacy_plus_one */);
     EXPECT_EQ(output_gt[i], cur_out);
   }
 
   // test utils::nms_cpu with topN
   std::vector<int> top_n = {1, 1, 2, 2, 3};
   auto gt_out = output_gt;
-  for (int i = 0; i < input_thresh.size(); i++) {
-    auto cur_out =
-        utils::nms_cpu(proposals, scores, indices, input_thresh[i], top_n[i]);
+  for (const auto i : c10::irange(input_thresh.size())) {
+    auto cur_out = utils::nms_cpu(
+        proposals,
+        scores,
+        indices,
+        input_thresh[i],
+        top_n[i],
+        true /* legacy_plus_one */);
     gt_out[i].resize(top_n[i]);
     EXPECT_EQ(gt_out[i], cur_out);
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(UtilsNMSTest, TestSoftNMSRotatedAngle0) {
   // Same inputs as TestSoftNMS, but in RRPN format with angle 0 for testing
   // nms_cpu_rotated
@@ -311,7 +349,7 @@ TEST(UtilsNMSTest, TestSoftNMSRotatedAngle0) {
       9.99834776e-01, 9.99737203e-01;
 
   Eigen::ArrayXf out_scores;
-  for (int i = 0; i < method.size(); ++i) {
+  for (const auto i : c10::irange(method.size())) {
     LOG(INFO) << "Testing SoftNMS with method=" << method[i]
               << ", overlap_thresh=" << overlap_thresh[i];
     const auto& expected_scores = scores_gt.col(i);
@@ -323,7 +361,9 @@ TEST(UtilsNMSTest, TestSoftNMSRotatedAngle0) {
         0.5,
         overlap_thresh[i],
         0.0001,
-        method[i]);
+        method[i],
+        -1, /* topN */
+        true /* legacy_plus_one */);
     EXPECT_EQ(keep, keep_gt);
     {
       auto diff = expected_scores - out_scores;
@@ -340,7 +380,8 @@ TEST(UtilsNMSTest, TestSoftNMSRotatedAngle0) {
           overlap_thresh[i],
           0.0001,
           method[i],
-          topN);
+          topN,
+          true /* legacy_plus_one */);
       std::vector<int> expected_keep(keep_gt.begin(), keep_gt.begin() + topN);
       EXPECT_EQ(expected_keep, keep);
     }
@@ -355,7 +396,9 @@ TEST(UtilsNMSTest, TestSoftNMSRotatedAngle0) {
         0.5,
         overlap_thresh[i],
         0.0001,
-        method[i]);
+        method[i],
+        -1, /* topN */
+        true /* legacy_plus_one */);
     std::sort(keep.begin(), keep.end());
     EXPECT_EQ(indices, keep);
     {
@@ -373,7 +416,9 @@ TEST(UtilsNMSTest, TestSoftNMSRotatedAngle0) {
         0.5,
         overlap_thresh[i],
         score_thresh,
-        method[i]);
+        method[i],
+        -1, /* topN */
+        true /* legacy_plus_one */);
     {
       auto expected_keep =
           utils::GetArrayIndices(expected_scores >= score_thresh);
@@ -387,7 +432,59 @@ TEST(UtilsNMSTest, TestSoftNMSRotatedAngle0) {
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(UtilsNMSTest, RotatedBBoxOverlaps) {
+  {
+    // One box is fully within another box, the angle is irrelavant
+    int M = 2, N = 3;
+    Eigen::ArrayXXf boxes(M, 5);
+    for (int i = 0; i < M; i++) {
+      boxes.row(i) << 0, 0, 5, 6, (360.0 / M - 180.0);
+    }
+
+    Eigen::ArrayXXf query_boxes(N, 5);
+    for (int i = 0; i < N; i++) {
+      query_boxes.row(i) << 0, 0, 3, 3, (360.0 / M - 180.0);
+    }
+
+    Eigen::ArrayXXf expected(M, N);
+    // 0.3 == (3 * 3) / (5 * 6)
+    expected.fill(0.3);
+
+    auto actual = utils::bbox_overlaps_rotated(boxes, query_boxes);
+    EXPECT_TRUE(((expected - actual).abs() < 1e-6).all());
+  }
+
+  {
+    // Angle 0
+    Eigen::ArrayXXf boxes(1, 5);
+    boxes << 39.500000, 50.451096, 80.000000, 18.097809, -0.000000;
+
+    Eigen::ArrayXXf query_boxes(1, 5);
+    query_boxes << 39.120628, 41.014862, 79.241257, 36.427757, -0.000000;
+
+    Eigen::ArrayXXf expected(1, 1);
+    expected << 0.48346716237;
+
+    auto actual = utils::bbox_overlaps_rotated(boxes, query_boxes);
+    EXPECT_TRUE(((expected - actual).abs() < 1e-6).all());
+  }
+
+  {
+    // Angle 0, very similar boxes that can produce 17 candidate 'intersections'
+    Eigen::ArrayXXf boxes(1, 5);
+    boxes << 299.500000, 417.370422, 600.000000, 364.259186, 0.000000;
+
+    Eigen::ArrayXXf query_boxes(1, 5);
+    query_boxes << 299.500000, 417.370422, 600.000000, 364.259155, 0.000000;
+
+    Eigen::ArrayXXf expected(1, 1);
+    expected << 0.99999991489;
+
+    auto actual = utils::bbox_overlaps_rotated(boxes, query_boxes);
+    EXPECT_TRUE(((expected - actual).abs() < 1e-6).all());
+  }
+
   {
     // Simple case with angle 0 (upright boxes)
     Eigen::ArrayXXf boxes(2, 5);
@@ -436,6 +533,5 @@ TEST(UtilsNMSTest, RotatedBBoxOverlaps) {
     EXPECT_TRUE(((expected - actual).abs() < 1e-6).all());
   }
 }
-#endif // CV_MAJOR_VERSION >= 3
 
 } // namespace caffe2

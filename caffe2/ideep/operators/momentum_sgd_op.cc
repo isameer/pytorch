@@ -1,6 +1,8 @@
 #include <caffe2/ideep/ideep_utils.h>
 
-namespace caffe2 {
+using namespace caffe2;
+
+namespace {
 
 void momentum_sgd_update(
     const int N,
@@ -47,10 +49,10 @@ class IDEEPMomentumSGDOp final : public IDEEPOperator {
   bool RunOnDevice() override {
     CAFFE_ENFORCE(Input(GRAD).get_nelems() == Input(MOMENTUM).get_nelems());
     if (Input(GRAD) != *Output(OUTPUT_GRAD)) {
-      Output(OUTPUT_GRAD)->reinit(Input(GRAD).get_descriptor());
+      Output(OUTPUT_GRAD)->init(Input(GRAD).get_descriptor());
     }
     if (Input(MOMENTUM) != *Output(OUTPUT_MOMENTUM)) {
-      Output(OUTPUT_MOMENTUM)->reinit(Input(MOMENTUM).get_descriptor());
+      Output(OUTPUT_MOMENTUM)->init(Input(MOMENTUM).get_descriptor());
     }
 
     // TODO: Use itensor after 0-dim is supported. Now use CPU tensor.
@@ -71,7 +73,9 @@ class IDEEPMomentumSGDOp final : public IDEEPOperator {
   }
 
  protected:
-  float momentum_{0.9};
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,cppcoreguidelines-non-private-member-variables-in-classes)
+  float momentum_ = 0.9f;
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   bool nesterov_;
   INPUT_TAGS(GRAD, MOMENTUM, LR);
   OUTPUT_TAGS(OUTPUT_GRAD, OUTPUT_MOMENTUM);
@@ -89,10 +93,10 @@ class IDEEPMomentumSGDUpdateOp final : public IDEEPOperator {
   bool RunOnDevice() override {
     CAFFE_ENFORCE(Input(GRAD).get_nelems() == Input(MOMENTUM).get_nelems());
     if (Input(GRAD) != *Output(OUTPUT_GRAD)) {
-      Output(OUTPUT_GRAD)->reinit(Input(GRAD).get_descriptor());
+      Output(OUTPUT_GRAD)->init(Input(GRAD).get_descriptor());
     }
     if (Input(MOMENTUM) != *Output(OUTPUT_MOMENTUM)) {
-      Output(OUTPUT_MOMENTUM)->reinit(Input(MOMENTUM).get_descriptor());
+      Output(OUTPUT_MOMENTUM)->init(Input(MOMENTUM).get_descriptor());
     }
 
     // TODO: Use itensor after 0-dim is supported. Now use CPU tensor.
@@ -113,13 +117,17 @@ class IDEEPMomentumSGDUpdateOp final : public IDEEPOperator {
   }
 
  protected:
-  float momentum_{0.9};
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,cppcoreguidelines-non-private-member-variables-in-classes)
+  float momentum_ = 0.9f;
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   bool nesterov_;
   INPUT_TAGS(GRAD, MOMENTUM, LR, PARAM);
   OUTPUT_TAGS(OUTPUT_GRAD, OUTPUT_MOMENTUM, OUTPUT_PARAM);
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_IDEEP_OPERATOR(MomentumSGD, IDEEPMomentumSGDOp);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_IDEEP_OPERATOR(MomentumSGDUpdate, IDEEPMomentumSGDUpdateOp);
 
-} // namespace caffe2
+} // namespace

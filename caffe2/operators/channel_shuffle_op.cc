@@ -50,12 +50,13 @@ void RunChannelShuffleNHWC(
     const T* X,
     T* Y,
     CPUContext* context) {
-  const std::array<int, 2> dims = {G, K};
-  const std::array<int, 2> axes = {1, 0};
+  const std::array<std::int64_t, 2> dims = {G, K};
+  const std::array<std::int32_t, 2> axes = {1, 0};
   const int M = N * HxW;
   const int C = G * K;
   for (int i = 0; i < M; ++i) {
-    math::Transpose<T, CPUContext>(2, dims.data(), axes.data(), X, Y, context);
+    math::Transpose<std::int64_t, T, CPUContext>(
+        2, dims.data(), axes.data(), X, Y, context);
     X += C;
     Y += C;
   }
@@ -73,7 +74,7 @@ bool ChannelShuffleOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
   const int G = group_;
   CAFFE_ENFORCE_EQ(C % G, 0);
   const int K = C / G;
-  const int HxW = X.numel() / (N * C);
+  const int HxW = X.size_from_dim(2);
   const float* X_data = X.data<float>();
   float* Y_data = Y->mutable_data<float>();
   RunChannelShuffleNCHW<float>(N, G, K, HxW, X_data, Y_data, &context_);
@@ -91,7 +92,7 @@ bool ChannelShuffleOp<float, CPUContext>::RunOnDeviceWithOrderNHWC() {
   const int G = group_;
   CAFFE_ENFORCE_EQ(C % G, 0);
   const int K = C / G;
-  const int HxW = X.numel() / (N * C);
+  const int HxW = X.size_between_dim(0, ndim - 1);
   const float* X_data = X.data<float>();
   float* Y_data = Y->mutable_data<float>();
   RunChannelShuffleNHWC<float>(N, G, K, HxW, X_data, Y_data, &context_);
@@ -108,7 +109,7 @@ bool ChannelShuffleGradientOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
   const int G = group_;
   CAFFE_ENFORCE_EQ(C % G, 0);
   const int K = C / G;
-  const int HxW = dY.numel() / (N * C);
+  const int HxW = dY.size_from_dim(2);
   const float* dY_data = dY.data<float>();
   float* dX_data = dX->mutable_data<float>();
   RunChannelShuffleNCHW<float>(N, K, G, HxW, dY_data, dX_data, &context_);
@@ -126,23 +127,27 @@ bool ChannelShuffleGradientOp<float, CPUContext>::RunOnDeviceWithOrderNHWC() {
   const int G = group_;
   CAFFE_ENFORCE_EQ(C % G, 0);
   const int K = C / G;
-  const int HxW = dY.numel() / (N * C);
+  const int HxW = dY.size_between_dim(0, ndim - 1);
   const float* dY_data = dY.data<float>();
   float* dX_data = dX->mutable_data<float>();
   RunChannelShuffleNHWC<float>(N, K, G, HxW, dY_data, dX_data, &context_);
   return true;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(ChannelShuffle, ChannelShuffleOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_GRADIENT_OPERATOR(
     ChannelShuffleGradient,
     ChannelShuffleGradientOp<float, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(ChannelShuffle)
     .IdenticalTypeAndShape()
     .NumInputs(1)
     .NumOutputs(1)
     .InheritOnnxSchema();
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 GRADIENT_OPERATOR_SCHEMA(ChannelShuffleGradient)
     .IdenticalTypeAndShape()
     .NumInputs(1)
@@ -163,6 +168,7 @@ class GetChannelShuffleGradient : public GradientMakerBase {
 
 } // namespace
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(ChannelShuffle, GetChannelShuffleGradient);
 
 } // namespace caffe2

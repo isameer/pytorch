@@ -8,7 +8,6 @@
 
 #ifndef C10_MOBILE
 #include "onnx/checker.h"
-#include "onnx/optimizer/optimize.h"
 #endif
 
 #include "google/protobuf/io/coded_stream.h"
@@ -54,6 +53,7 @@ bool TryConvertingTensorRawValues(
 bool IsOperator(const std::string& op_type) {
   // pull in all the operators upon first invocation
   // Intentional leaky
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
   static std::set<std::string>* ops_ =
       new std::set<std::string>(caffe2::GetRegisteredOperators());
   return ops_->count(caffe2::OpRegistryKey(op_type, "DEFAULT"));
@@ -68,21 +68,6 @@ caffe2::DeviceOption GetDeviceOption(const Device& onnx_device) {
   d.set_device_id(onnx_device.device_id);
   return d;
 }
-
-#ifndef C10_MOBILE
-ModelProto OptimizeOnnx(const ModelProto& input, bool init) {
-  std::vector<std::string> passes{"fuse_consecutive_transposes",
-                                  "eliminate_nop_transpose",
-                                  "fuse_transpose_into_gemm"};
-
-  if (init) {
-    passes.emplace_back("split_init");
-  } else {
-    passes.emplace_back("split_predict");
-  }
-  return ::ONNX_NAMESPACE::optimization::Optimize(input, passes);
-}
-#endif
 
 template <class T, class U>
 U LookUpWithDefault(
@@ -304,7 +289,8 @@ Caffe2Backend::get_renamed_operators() const {
       {"Tile", "NumpyTile"},
       {"DynamicSlice", "Slice"},
       {"ConstantOfShape", "ConstantFill"},
-      {"RandomNormal", "GaussianFill"}};
+      {"RandomNormal", "GaussianFill"},
+      {"RandomNormalLike", "GaussianFill"}};
   return kRenamedOperators;
 }
 
@@ -348,10 +334,12 @@ Caffe2Backend::get_special_operators() const {
               {"GlobalMaxPool", &Caffe2Backend::CreateConvPoolOpBase},
               {"MaxPool", &Caffe2Backend::CreateConvPoolOpBase},
               {"Reshape", &Caffe2Backend::CreateReshape},
+              {"Int8Reshape", &Caffe2Backend::CreateReshape},
               {"Gather", &Caffe2Backend::CreateGather},
               {"Gemm", &Caffe2Backend::CreateGemm},
               {"Pad", &Caffe2Backend::CreatePad},
               {"Concat", &Caffe2Backend::CreateConcat},
+              {"Int8Concat", &Caffe2Backend::CreateConcat},
               {"LogSoftmax", &Caffe2Backend::CreateLogSoftmax},
               {"Slice", &Caffe2Backend::CreateSlice},
               {"Split", &Caffe2Backend::CreateSplit},
@@ -362,7 +350,11 @@ Caffe2Backend::get_special_operators() const {
               {"Dropout", &Caffe2Backend::CreateDropout},
               {"LRN", &Caffe2Backend::CreateLRN},
               {"DynamicSlice", &Caffe2Backend::CreateDynamicSlice},
-              {"RandomNormal", &Caffe2Backend::CreateRandomNormal}};
+              {"RandomNormal", &Caffe2Backend::CreateRandomNormal},
+              {"RandomNormalLike", &Caffe2Backend::CreateRandomNormal},
+              {"Where", &Caffe2Backend::CreateWhereOp},
+              {"NonZero", &Caffe2Backend::CreateNonZeroOp},
+              {"Multinomial", &Caffe2Backend::CreateMultinomialOp}};
   return kSpecialOperators;
 }
 
@@ -578,6 +570,98 @@ Caffe2Ops Caffe2Backend::CreateRandomNormal(
     attributes.remove("scale");
   }
   return CommonOnnxNodeToCaffe2Ops(onnx_node, ctx);
+}
+
+Caffe2Ops Caffe2Backend::CreateWhereOp(
+    OnnxNode* onnx_node,
+    const ConversionContext& ctx) {
+  // The native Caffe2 op doesn't support broadcasting, so we defer the handling
+  // of this op to the ATen library that does.
+  onnx::NodeProto converted;
+  converted.CopyFrom(onnx_node->node);
+  converted.set_op_type("ATen");
+  onnx::AttributeProto* attr = converted.add_attribute();
+  attr->set_name("operator");
+  attr->set_s("where");
+  OnnxNode new_node(converted);
+  return CommonOnnxNodeToCaffe2Ops(&new_node, ctx);
+}
+
+Caffe2Ops Caffe2Backend::CreateNonZeroOp(
+    OnnxNode* onnx_node,
+    const ConversionContext& ctx) {
+  // Native Caffe2 doesn't support NonZero, fallback to ATen.
+  // ATen nonzero is equivalent to Transpose(ONNX::NonZero).
+  onnx::NodeProto converted;
+  converted.CopyFrom(onnx_node->node);
+
+  auto nonzero_output = dummy_->NewDummyName();
+  converted.set_output(0, nonzero_output);
+  converted.set_op_type("ATen");
+  onnx::AttributeProto* attr = converted.add_attribute();
+  attr->set_name("operator");
+  attr->set_s("nonzero");
+  OnnxNode new_node(converted);
+  auto ret = CommonOnnxNodeToCaffe2Ops(&new_node, ctx);
+
+  auto* c2_transpose = ret.ops.Add();
+  BuildOperator(c2_transpose, "Transpose", {nonzero_output}, {onnx_node->node.output(0)});
+  return ret;
+}
+
+Caffe2Ops Caffe2Backend::CreateMultinomialOp(
+    OnnxNode* onnx_node,
+    const ConversionContext& ctx) {
+  // Fallback to ATen.
+  // ATen::Multinomial takes probabilities as input, ONNX Multinomial expects input to be log probabilities.
+  Caffe2Ops ret;
+  auto c2_exp_output = dummy_->NewDummyName();
+  auto* c2_exp = ret.ops.Add();
+  BuildOperator(c2_exp, "Exp", {onnx_node->node.input(0)}, {c2_exp_output});
+
+  auto* c2_multinomial = ret.ops.Add();
+  caffe2::Argument c2_arg_op;
+  c2_arg_op.set_name("operator");
+  c2_arg_op.set_s("multinomial");
+  // ONNX Multinomial only supports replacement=True.
+  caffe2::Argument c2_arg_rep;
+  c2_arg_rep.set_name("replacement");
+  c2_arg_rep.set_i(1);
+  auto& onnx_attributes = onnx_node->attributes;
+  caffe2::Argument c2_arg_num;
+  c2_arg_num.set_name("num_samples");
+  c2_arg_num.set_i(onnx_attributes.get<int64_t>("sample_size"));
+
+  // ONNX Multinomial has attribute dtype in {int64, int32}, which specifies output datatype.
+  // ATen::Multinomial output dtype is always int64.
+  auto onnx_dtype =
+    onnx_attributes.get<int64_t>("dtype", TensorProto::UNDEFINED);
+  if (onnx_dtype == ::ONNX_NAMESPACE::TensorProto::INT64) {
+    BuildOperator(
+        c2_multinomial,
+        "ATen",
+        {c2_exp_output},
+        {onnx_node->node.output(0)},
+        {c2_arg_op, c2_arg_rep, c2_arg_num});
+  } else if (onnx_dtype == ::ONNX_NAMESPACE::TensorProto::INT32) {
+    auto c2_multinomial_output = dummy_->NewDummyName();
+    BuildOperator(
+        c2_multinomial,
+        "ATen",
+        {c2_exp_output},
+        {c2_multinomial_output},
+        {c2_arg_op, c2_arg_rep, c2_arg_num});
+
+    auto* c2_cast = ret.ops.Add();
+    caffe2::Argument to;
+    to.set_name("to");
+    to.set_i(caffe2::TensorProto::INT32);
+    BuildOperator(c2_cast, "Cast", {c2_multinomial_output}, {onnx_node->node.output(0)}, {to});
+  } else {
+    CAFFE_THROW("ONNX does not support dtype other than int32/int64 in Multinomial, but get ", onnx_dtype);
+  }
+
+  return ret;
 }
 
 Caffe2Ops Caffe2Backend::CreateReciprocal(
@@ -1063,7 +1147,7 @@ Caffe2Ops Caffe2Backend::CreateDynamicSlice(
   // Axes tensor will be used to populate the fully-specified starts and ends
   // arguments to the caffe2 Slice operator.
   std::string axes_tensor;
-  if (onnx_node->node.input_size() > 2) {
+  if (onnx_node->node.input_size() > 3) {
     axes_tensor = onnx_node->node.input(3);
   } else {
     axes_tensor = dummy_->NewDummyName();
@@ -1310,6 +1394,7 @@ Caffe2Ops Caffe2Backend::CommonOnnxNodeToCaffe2Ops(
   c2_op->mutable_output()->MergeFrom(node.output());
   c2_op->set_name(node.name());
 
+  // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
   const auto onnx_op_type = node.op_type();
   auto broken_version = caffe2::get_default(
       get_broken_operators(), onnx_op_type, std::numeric_limits<int>::max());
@@ -1422,14 +1507,9 @@ void Caffe2Backend::OnnxToCaffe2(
     const std::vector<Caffe2Ops>& extras) {
   auto device_option = GetDeviceOption(Device(device));
 
-#ifndef C10_MOBILE
-  ModelProto init_model = OptimizeOnnx(onnx_model, true);
-  ModelProto pred_model = OptimizeOnnx(onnx_model, false);
-#else
   ModelProto init_model = ModelProto();
   ModelProto pred_model = onnx_model;
   pred_model.mutable_graph()->mutable_initializer()->Clear();
-#endif
 
   init_net->set_name(onnx_model.graph().name() + "_init");
   pred_net->set_name(onnx_model.graph().name() + "_predict");
@@ -1558,7 +1638,7 @@ Caffe2BackendRep* Caffe2Backend::Prepare(
     }
   }
 
-  // TODO: avoid extra copy by directly feed initialiers to backend blobs
+  // TODO: avoid extra copy by directly feed initializers to backend blobs
   OnnxToCaffe2(
       &rep->init_net(),
       &rep->pred_net(),
@@ -1674,6 +1754,7 @@ void Caffe2Backend::BuildTensorFillingOp(
       ConvertIntegralValueToCaffe2<::google::protobuf::int64>(c2_op, c2_values, onnx_tensor);
     } else if (onnx_tensor.data_type() == TensorProto::UINT32) {
       ConvertIntegralValueToCaffe2<::google::protobuf::uint64>(c2_op, c2_values, onnx_tensor);
+    // NOLINTNEXTLINE(bugprone-branch-clone)
     } else if (onnx_tensor.data_type() == TensorProto::BOOL) {
       ConvertIntegralValueToCaffe2<::google::protobuf::int8>(c2_op, c2_values, onnx_tensor);
     } else if (onnx_tensor.data_type() == TensorProto::UINT8) {
@@ -1716,6 +1797,7 @@ void Caffe2Backend::BuildTensorFillingOp(
         c2_values->set_f(onnx_tensor.float_data(0));
       } else {
         CAFFE_ENFORCE(onnx_tensor.raw_data().size() == sizeof(float));
+        // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
         float f;
         memcpy(&f, onnx_tensor.raw_data().c_str(), sizeof(float));
         c2_values->set_f(f);
@@ -1726,6 +1808,7 @@ void Caffe2Backend::BuildTensorFillingOp(
         c2_values->set_f(static_cast<float>(onnx_tensor.double_data(0)));
       } else {
         CAFFE_ENFORCE(onnx_tensor.raw_data().size() == sizeof(double));
+        // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
         double d;
         memcpy(&d, onnx_tensor.raw_data().c_str(), sizeof(double));
         c2_values->set_f(static_cast<float>(d));
@@ -1736,6 +1819,7 @@ void Caffe2Backend::BuildTensorFillingOp(
         c2_values->set_i(onnx_tensor.int64_data(0));
       } else {
         CAFFE_ENFORCE(onnx_tensor.raw_data().size() == sizeof(int64_t));
+        // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
         int64_t i;
         memcpy(&i, onnx_tensor.raw_data().c_str(), sizeof(int64_t));
         c2_values->set_i(i);
@@ -1746,6 +1830,7 @@ void Caffe2Backend::BuildTensorFillingOp(
         c2_values->set_i(onnx_tensor.int32_data(0));
       } else {
         CAFFE_ENFORCE(onnx_tensor.raw_data().size() == sizeof(int32_t));
+        // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
         int32_t i;
         memcpy(&i, onnx_tensor.raw_data().c_str(), sizeof(int32_t));
         c2_values->set_i(i);

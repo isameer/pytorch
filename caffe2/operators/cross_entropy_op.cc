@@ -6,32 +6,40 @@ namespace caffe2 {
 namespace {
 
 inline float sigmoid_xent_forward(float lgt, float tgt) {
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   return lgt * (tgt - (lgt >= 0)) - log(1 + exp(lgt - 2 * lgt * (lgt >= 0)));
 }
 
 inline float sigmoid_xent_backward(float lgt, float tgt) {
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   return tgt - 1. / (1. + exp(-lgt));
 }
 
 inline float sigmoid_partition(float lgt) {
   // computes log(1 + exp(lgt)) with only exp(x) function when x >= 0
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   return lgt * (lgt >= 0) + log(1 + exp(lgt - 2 * lgt * (lgt >= 0)));
 }
 
 inline float sigmoid_xent_forward_with_log_d_trick(float lgt, float tgt) {
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   return (2 * tgt - 1.) * (lgt - sigmoid_partition(lgt));
 }
 
 inline float sigmoid_xent_backward_with_log_d_trick(float lgt, float tgt) {
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   return (2 * tgt - 1.) / (1. + exp(lgt));
 }
 
 inline float unjoined_sigmoid_xent_forward(float lgt, float tgt) {
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   return lgt * tgt + (tgt - 1) * lgt * (lgt >= 0) -
+      // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
       (1 - tgt) * log(1 + exp(lgt - 2 * lgt * (lgt >= 0)));
 }
 
 inline float unjoined_sigmoid_xent_backward(float lgt, float tgt) {
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   return tgt - (1. - tgt) / (1. + exp(-lgt));
 }
 
@@ -42,6 +50,7 @@ bool LabelCrossEntropyOp<float, CPUContext>::RunOnDevice() {
   auto& X = Input(0);
   auto& label = Input(1);
 
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   int N, D;
   if (X.dim() > 1) {
     N = X.dim32(0);
@@ -224,6 +233,7 @@ bool LabelCrossEntropyGradientOp<float, CPUContext>::RunOnDevice() {
   auto& label = Input(1);
   auto& dY = Input(2);
 
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   int N, D;
   if (X.dim() > 1) {
     N = X.dim32(0);
@@ -246,7 +256,7 @@ bool LabelCrossEntropyGradientOp<float, CPUContext>::RunOnDevice() {
   float* dXdata = dX->template mutable_data<float>();
   for (int i = 0; i < N; ++i) {
     dXdata[i * D + labelData[i]] =
-        - dYdata[i] / std::max(Xdata[i * D + labelData[i]], kLOG_THRESHOLD());
+        -dYdata[i] / std::max(Xdata[i * D + labelData[i]], kLOG_THRESHOLD());
   }
   return true;
 }
@@ -294,6 +304,7 @@ bool CrossEntropyOp<float, CPUContext>::RunOnDevice() {
   auto& X = Input(0);
   auto& label = Input(1);
 
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   int N, D;
   if (X.dim() > 1) {
     N = X.dim32(0);
@@ -332,6 +343,7 @@ bool CrossEntropyGradientOp<float, CPUContext>::RunOnDevice() {
   auto& label = Input(1);
   auto& dY = Input(2);
 
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   int N, D;
   if (X.dim() > 1) {
     N = X.dim32(0);
@@ -360,11 +372,16 @@ bool CrossEntropyGradientOp<float, CPUContext>::RunOnDevice() {
   return true;
 }
 
-REGISTER_CPU_OPERATOR(LabelCrossEntropy,
-                      LabelCrossEntropyOp<float, CPUContext>);
-REGISTER_CPU_OPERATOR(LabelCrossEntropyGradient,
-                      LabelCrossEntropyGradientOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+REGISTER_CPU_OPERATOR(
+    LabelCrossEntropy,
+    LabelCrossEntropyOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+REGISTER_CPU_OPERATOR(
+    LabelCrossEntropyGradient,
+    LabelCrossEntropyGradientOp<float, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(LabelCrossEntropy)
     .NumInputs(2)
     .NumOutputs(1)
@@ -436,62 +453,70 @@ Y:
 
 
 )DOC")
-  .Input(
-      0,
-      "X",
-      "Input tensor which is almost always the result of a softmax operation. $X$ is a 2D array of size $NxD$, where $N$ is the batch size and $D$ is the number of classes.")
-  .Input(
-      1,
-      "label",
-      "Blob containing the labels used to compare the input. $label$ is a length $N$ list of integers, where each element is the integer label for the $n$th element of the batch.")
-  .Output(
-      0,
-      "Y",
-      "Output blob from the cross entropy computation. $Y$ is 1D length $N$ tensor.");
-OPERATOR_SCHEMA(LabelCrossEntropyGradient)
-  .NumInputs(3)
-  .NumOutputs(1);
+    .Input(
+        0,
+        "X",
+        "Input tensor which is almost always the result of a softmax operation. $X$ is a 2D array of size $NxD$, where $N$ is the batch size and $D$ is the number of classes.")
+    .Input(
+        1,
+        "label",
+        "Blob containing the labels used to compare the input. $label$ is a length $N$ list of integers, where each element is the integer label for the $n$th element of the batch.")
+    .Output(
+        0,
+        "Y",
+        "Output blob from the cross entropy computation. $Y$ is 1D length $N$ tensor.");
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+OPERATOR_SCHEMA(LabelCrossEntropyGradient).NumInputs(3).NumOutputs(1);
 
 class GetLabelCrossEntropyGradient : public GradientMakerBase {
   using GradientMakerBase::GradientMakerBase;
   vector<OperatorDef> GetGradientDefs() override {
     return SingleGradientDef(
-        "LabelCrossEntropyGradient", "",
+        "LabelCrossEntropyGradient",
+        "",
         vector<string>{I(0), I(1), GO(0)},
         vector<string>{GI(0)});
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(LabelCrossEntropy, GetLabelCrossEntropyGradient);
 
-REGISTER_CPU_OPERATOR(MakeTwoClass,
-                      MakeTwoClassOp<float, CPUContext>);
-REGISTER_CPU_OPERATOR(MakeTwoClassGradient,
-                      MakeTwoClassGradientOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+REGISTER_CPU_OPERATOR(MakeTwoClass, MakeTwoClassOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+REGISTER_CPU_OPERATOR(
+    MakeTwoClassGradient,
+    MakeTwoClassGradientOp<float, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     SigmoidCrossEntropyWithLogits,
     SigmoidCrossEntropyWithLogitsOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     SigmoidCrossEntropyWithLogitsGradient,
     SigmoidCrossEntropyWithLogitsGradientOp<float, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     WeightedSigmoidCrossEntropyWithLogits,
     WeightedSigmoidCrossEntropyWithLogitsOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     WeightedSigmoidCrossEntropyWithLogitsGradient,
     WeightedSigmoidCrossEntropyWithLogitsGradientOp<float, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(MakeTwoClass)
     .NumInputs(1)
     .NumOutputs(1)
-    .TensorInferenceFunction(
-        [](const OperatorDef& /* unused */, const vector<TensorShape>& in) {
-          vector<TensorShape> out(1);
-          out[0].add_dims(in[0].dims(0));
-          out[0].add_dims(2);
-          return out;
-        })
+    .TensorInferenceFunction([](const OperatorDef& /* unused */,
+                                const vector<TensorShape>& in) {
+      vector<TensorShape> out(1);
+      out[0].add_dims(in[0].dims(0));
+      out[0].add_dims(2);
+      return out;
+    })
     .SetDoc(R"DOC(
 Given a vector of probabilities, this operator transforms this into a 2-column
  matrix with complimentary probabilities for binary classification. In explicit
@@ -504,10 +529,10 @@ Given a vector of probabilities, this operator transforms this into a 2-column
         "2-column matrix with complimentary probabilities of X for "
         "binary classification");
 
-OPERATOR_SCHEMA(MakeTwoClassGradient)
-  .NumInputs(1)
-  .NumOutputs(1);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+OPERATOR_SCHEMA(MakeTwoClassGradient).NumInputs(1).NumOutputs(1);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SigmoidCrossEntropyWithLogits)
     .Arg("log_D_trick", R"DOC(
 default is false; if enabled, will use the log d trick to avoid the vanishing
@@ -530,10 +555,12 @@ Returns a tensor of shape (batch_size,) of losses for each example.
     .Input(1, "targets", "matrix of targets, same shape as logits.")
     .Output(0, "xentropy", "Vector with the total xentropy for each example.");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SigmoidCrossEntropyWithLogitsGradient)
     .NumInputs(3)
     .NumOutputs(1);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(WeightedSigmoidCrossEntropyWithLogits)
     .NumInputs(3)
     .NumOutputs(1)
@@ -551,6 +578,7 @@ Returns a tensor of shape (batch_size,) of losses for each example.
     .Input(2, "weights", "matrix of weights, same shape as logits.")
     .Output(0, "xentropy", "Vector with the total xentropy for each example.");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(WeightedSigmoidCrossEntropyWithLogitsGradient)
     .NumInputs(4)
     .NumOutputs(1);
@@ -565,6 +593,7 @@ struct GetMakeTwoClassGradient : public GradientMakerBase {
         vector<string>{GI(0)});
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(MakeTwoClass, GetMakeTwoClassGradient);
 
 struct GetSigmoidCrossEntropyWithLogitsGradient : public GradientMakerBase {
@@ -577,6 +606,7 @@ struct GetSigmoidCrossEntropyWithLogitsGradient : public GradientMakerBase {
         vector<string>{GI(0)});
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(
     SigmoidCrossEntropyWithLogits,
     GetSigmoidCrossEntropyWithLogitsGradient);
@@ -592,15 +622,19 @@ struct GetWeightedSigmoidCrossEntropyWithLogitsGradient
         vector<string>{GI(0)});
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(
     WeightedSigmoidCrossEntropyWithLogits,
     GetWeightedSigmoidCrossEntropyWithLogitsGradient);
 
-REGISTER_CPU_OPERATOR(CrossEntropy,
-                      CrossEntropyOp<float, CPUContext>);
-REGISTER_CPU_OPERATOR(CrossEntropyGradient,
-                      CrossEntropyGradientOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+REGISTER_CPU_OPERATOR(CrossEntropy, CrossEntropyOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+REGISTER_CPU_OPERATOR(
+    CrossEntropyGradient,
+    CrossEntropyGradientOp<float, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(CrossEntropy)
     .NumInputs(2)
     .NumOutputs(1)
@@ -683,19 +717,20 @@ Y:
         0,
         "Y",
         "Output blob from the cross entropy computation. $Y$ is 1D length $N$ tensor.");
-OPERATOR_SCHEMA(CrossEntropyGradient)
-  .NumInputs(3)
-  .NumOutputs(1);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+OPERATOR_SCHEMA(CrossEntropyGradient).NumInputs(3).NumOutputs(1);
 
 class GetCrossEntropyGradient : public GradientMakerBase {
   using GradientMakerBase::GradientMakerBase;
   vector<OperatorDef> GetGradientDefs() override {
     return SingleGradientDef(
-        "CrossEntropyGradient", "",
+        "CrossEntropyGradient",
+        "",
         vector<string>{I(0), I(1), GO(0)},
         vector<string>{GI(0)});
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(CrossEntropy, GetCrossEntropyGradient);
 
-}  // namespace caffe2
+} // namespace caffe2

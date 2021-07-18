@@ -41,7 +41,7 @@ bool ChannelShuffleDNNLowPOp<T>::RunOnDeviceWithOrderNCHW() {
   const int G = group_;
   CAFFE_ENFORCE_EQ(C % G, 0);
   const int K = C / G;
-  const int HxW = X.numel() / (N * C);
+  const int HxW = X.size_from_dim(2);
   const int stride = C * HxW;
   const T* X_data = X.template data<T>();
   T* Y_data = Y->template mutable_data<T>();
@@ -116,16 +116,19 @@ bool ChannelShuffleDNNLowPOp<T>::RunOnDeviceWithOrderNHWC() {
   return true;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR_WITH_ENGINE(
     ChannelShuffle,
     DNNLOWP,
     ChannelShuffleDNNLowPOp<uint8_t>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR_WITH_ENGINE(
     Int8ChannelShuffle,
     DNNLOWP,
     ChannelShuffleDNNLowPOp<uint8_t>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR_WITH_ENGINE(
     ChannelShuffle,
     DNNLOWP_16,

@@ -56,8 +56,10 @@ bool BatchBucketizeOp<CPUContext>::RunOnDevice() {
   return true;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(BatchBucketize, BatchBucketizeOp<CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(BatchBucketize)
     .NumInputs(4)
     .NumOutputs(1)
@@ -69,7 +71,7 @@ The lengths is a 1D tensor that splits the following 'boundaries' argument.
 The boundaries is a 1D tensor containing the border list for each feature.
 
 With in each batch, `indices` should not have duplicate number,
-and the number of elements in `indices` should be less than or euqal to `D`.
+and the number of elements in `indices` should be less than or equal to `D`.
 Each element in `lengths` vector (lengths[`i`]) represents
 the number of boundaries in the sub border list.
 The sum of all elements in `lengths` must be equal to the size of  `boundaries`.
@@ -121,6 +123,7 @@ after running this operator.
         "2-D dense tensor, with 1st dim = float_features.dim(0), 2nd dim = size(indices)"
         "in the arg list, the tensor is of the same data type as `feature`.");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 NO_GRADIENT(BatchBucketize);
 
 } // namespace caffe2

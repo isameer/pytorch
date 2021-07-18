@@ -12,6 +12,7 @@
 #include "caffe2/utils/proto_utils.h"
 #include "caffe2/utils/string_utils.h"
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_string(
     caffe2_override_executor,
     "",
@@ -19,6 +20,7 @@ C10_DEFINE_string(
 
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_REGISTRY(
     NetRegistry,
     NetBase,
@@ -37,6 +39,7 @@ NetBase::NetBase(
       name_(def->name()),
       net_def_(def) {
   static GlobalInitIsCalledGuard guard;
+  C10_LOG_API_USAGE_ONCE("caffe2.net.create");
   // Check that node_name is empty for all ops
   for (const OperatorDef& op : def->op()) {
     if (op.has_device_option()) {
@@ -94,6 +97,12 @@ bool NetBase::RunAsync() {
     op->ResetEvent();
   }
   return DoRunAsync();
+}
+
+void NetBase::Cancel() {
+  for (auto& op : GetOperators()) {
+    op->Cancel();
+  }
 }
 
 namespace {
@@ -157,7 +166,7 @@ unique_ptr<NetBase> CreateNet(
     const std::shared_ptr<const NetDef>& net_def,
     Workspace* ws) {
   std::string net_type;
-  if (net_def->has_type()) {
+  if (net_def->has_type() && !net_def->type().empty()) {
     net_type = net_def->type();
   } else {
     // By default, we will return a simple network that just runs all operators
@@ -190,6 +199,15 @@ int ExecutorHelper::GetNumWorkers() const {
   CAFFE_THROW("Not implemented");
 }
 
+// benchmark an individual run so that we can FeedBlobs with new inputs
+// no warmup
+// return time taken in microseconds
+float NetBase::TEST_Benchmark_One_Run() {
+  Timer timer;
+  CAFFE_ENFORCE(Run(), "Run has failed.");
+  return timer.MicroSeconds();
+}
+
 std::vector<float> NetBase::TEST_Benchmark(
     const int warmup_runs,
     const int main_runs,
@@ -215,6 +233,7 @@ std::vector<float> NetBase::TEST_Benchmark(
   }
   auto millis = timer.MilliSeconds();
   LOG(INFO) << "Main runs finished. Milliseconds per iter: "
+            // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
             << millis / main_runs
             << ". Iters per second: " << 1000.0 * main_runs / millis;
 
@@ -222,6 +241,7 @@ std::vector<float> NetBase::TEST_Benchmark(
     LOG(INFO) << "Net does not support per-op benchmark; "
                  "to run it, switch to a simple net type";
   }
+  // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
   return std::vector<float>{millis / main_runs};
 }
 

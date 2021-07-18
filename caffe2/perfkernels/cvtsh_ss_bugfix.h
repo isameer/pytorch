@@ -2,15 +2,15 @@
 
 // Apple clang was fixed in 8.1
 #if defined(__apple_build_version__) && ((__clang_major__ < 8) || ((__clang_major__ == 8) && (__clang_minor__ < 1)))
-#define __APPLE_NEED_FIX 1
+#define CAFFE2_INTERNAL_APPLE_NEED_FIX 1
 #endif
 
 // Regular clang was fixed in 3.9
 #if defined(__clang__) && (__clang_major__ < 4) && (__clang_minor__ < 9)
-#define __CLANG_NEED_FIX 1
+#define CAFFE2_INTERNAL_CLANG_NEED_FIX 1
 #endif
 
-#if __APPLE_NEED_FIX || __CLANG_NEED_FIX
+#if defined(CAFFE2_INTERNAL_APPLE_NEED_FIX) || defined(CAFFE2_INTERNAL_CLANG_NEED_FIX)
 
 #include <c10/util/Half.h>
 #include <emmintrin.h>
@@ -39,7 +39,7 @@ _cvtss_sh(float a, int imm8) {
 #undef __APPLE_NEED_FIX
 #undef __CLANG_NEED_FIX
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(__clang__)
 
 #include <c10/util/Half.h>
 #include <cstdint>

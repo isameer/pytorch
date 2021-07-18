@@ -3,19 +3,24 @@
 namespace caffe2 {
 
 // From CPU, copy it to whatever the current context
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     CopyFromCPUInput,
     CopyOp<CPUContext, CPUContext, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     CopyOnDeviceLike,
     CopyOnDeviceLikeOp<CPUContext, CPUContext, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(Copy, CopyOp<CPUContext, CPUContext, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(Copy)
     .NumInputs(1)
     .NumOutputs(1)
     .IdenticalTypeAndShape()
     .InputsCanCrossDevices()
+    .InheritOnnxSchema("Identity")
     .SetDoc(R"DOC(
 Copy input tensor into output, potentially across devices.
 
@@ -69,6 +74,7 @@ output:
     .Input(0, "input", "(*Tensor*): input tensor to copy")
     .Output(0, "output", "(*Tensor*): copy of input tensor");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(CopyGPUToCPU)
     .NumInputs(1)
     .NumOutputs(1)
@@ -90,6 +96,7 @@ Copy tensor for GPU to CPU context. Must be run under GPU device option.
     .Input(0, "input", "The input tensor.")
     .Output(0, "output", "Tensor that will contain a copy of the input.");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(CopyCPUToGPU)
     .NumInputs(1)
     .NumOutputs(1)
@@ -111,6 +118,7 @@ Copy tensor for CPU to GPU context. Must be run under GPU device option.
     .Input(0, "input", "The input tensor.")
     .Output(0, "output", "Tensor that will contain a copy of the input.");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(CopyFromCPUInput)
     .NumInputs(1)
     .NumOutputs(1)
@@ -131,6 +139,7 @@ Context (GPU or CPU). This may involves cross-device MemCpy.
     .Input(0, "input", "The input CPU tensor.")
     .Output(0, "output", "either a TensorCUDA or a TensorCPU");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(CopyOnDeviceLike)
     .NumInputs(2)
     .NumOutputs(1)
@@ -149,6 +158,7 @@ struct GetCopyGradient : public GradientMakerBase {
         vector<string>{GI(0)});
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(Copy, GetCopyGradient);
 
 struct GetGPUToCPUGradient : public GradientMakerBase {
@@ -171,6 +181,7 @@ struct GetGPUToCPUGradient : public GradientMakerBase {
     }
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(CopyGPUToCPU, GetGPUToCPUGradient);
 
 struct GetCPUToGPUGradient : public GradientMakerBase {
@@ -193,6 +204,15 @@ struct GetCPUToGPUGradient : public GradientMakerBase {
     }
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(CopyCPUToGPU, GetCPUToGPUGradient);
 
 } // namespace caffe2
+
+C10_EXPORT_CAFFE2_OP_TO_C10_SCHEMA_ONLY(
+    CopyGPUToCPU,
+    "_caffe2::CopyGPUToCPU(Tensor input) -> Tensor");
+
+C10_EXPORT_CAFFE2_OP_TO_C10_SCHEMA_ONLY(
+    CopyCPUToGPU,
+    "_caffe2::CopyCPUToGPU(Tensor input) -> Tensor");

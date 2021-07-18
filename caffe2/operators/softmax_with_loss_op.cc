@@ -1,39 +1,45 @@
-#include "softmax_with_loss_op.h"
-#include "softmax_shared.h"
+#include "caffe2/operators/softmax_with_loss_op.h"
+
+#include <vector>
+
+#include "caffe2/operators/softmax_utils.h"
 
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(SoftmaxWithLoss, SoftmaxWithLossOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     SoftmaxWithLossGradient,
     SoftmaxWithLossGradientOp<float, CPUContext>);
 
 // Input: X (logits), T (labels); Output: P (probs), Y
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SoftmaxWithLoss)
     .NumInputs(2, 3)
-    .NumOutputs(2)
-    .TensorInferenceFunction(
-        [](const OperatorDef& def, const vector<TensorShape>& in) {
-          ArgumentHelper helper(def);
-          auto axis = helper.GetSingleArgument<int32_t>("axis", 1);
+    .NumOutputs({2, 3})
+    .TensorInferenceFunction([](const OperatorDef& def,
+                                const vector<TensorShape>& in) {
+      ArgumentHelper helper(def);
+      auto axis = helper.GetSingleArgument<int32_t>("axis", 1);
 
-          vector<TensorShape> out(2);
+      vector<TensorShape> out(2);
 
-          auto logits = in[0]; // Tensor with Shape [batch_size, num_classes]
-          auto labels = in[1]; // Tensor with shape [batch_size, ]
-          const auto canonical_axis =
-              canonical_axis_index_(axis, logits.dims().size());
-          const int batch_size =
-              size_to_dim_(canonical_axis, GetDimsVector(logits));
-          const int num_classes =
-              size_from_dim_(canonical_axis, GetDimsVector(logits));
+      auto logits = in[0]; // Tensor with Shape [batch_size, num_classes]
+      auto labels = in[1]; // Tensor with shape [batch_size, ]
+      const auto canonical_axis =
+          canonical_axis_index_(axis, logits.dims().size());
+      const int batch_size =
+          size_to_dim_(canonical_axis, GetDimsVector(logits));
+      const int num_classes =
+          size_from_dim_(canonical_axis, GetDimsVector(logits));
 
-          out[0].set_data_type(logits.data_type());
-          out[0].add_dims(batch_size);
-          out[0].add_dims(num_classes);
+      out[0].set_data_type(logits.data_type());
+      out[0].add_dims(batch_size);
+      out[0].add_dims(num_classes);
 
-          return out;
-        })
+      return out;
+    })
     .SetDoc(R"DOC(
 Combined Softmax and Cross-Entropy loss operator. The operator first computes the softmax normalized values for each layer in the batch of the given input, then computes cross-entropy loss. This operator is numerically more stable than separate `Softmax` and `CrossEntropy` ops. The inputs are a 2-D tensor `logits` of size (batch_size x input_feature_dimensions), which represents the unscaled log probabilities, and a 1-dimensional integer `labels` tensor for ground truth. An optional third input blob (`weight_tensor`) can be used to weight the samples for the loss, which is useful if the training set is unbalanced. This operator outputs a `softmax` tensor which contains the probability for each label for each example (same shape is `logits` input), and a scalar `loss` value, which is the averaged cross-entropy loss between the softmax probabilities and the ground truth values. Use parameter `label_prob`=1 to enable inputting labels as a probability distribution.
 
@@ -132,10 +138,18 @@ avgloss: 10.667433
 </details>
 
 )DOC")
-    .Arg("label_prob","*(type: int; default: 0)* Setting to 1 enables inputting labels as probability distribution.")
-    .Arg("axis","*(type: int; default: 1)* Axis of the inputs when coerced to 2D.")
-    .Arg("scale","*(type: float)* Average loss output scaling factor (must be >= 0).")
-    .Arg("order","*(type: string; default: 'NCHW')* Order of blob dimensions (only 'NCHW' is supported currently).")
+    .Arg(
+        "label_prob",
+        "*(type: int; default: 0)* Setting to 1 enables inputting labels as probability distribution.")
+    .Arg(
+        "axis",
+        "*(type: int; default: 1)* Axis of the inputs when coerced to 2D.")
+    .Arg(
+        "scale",
+        "*(type: float)* Average loss output scaling factor (must be >= 0).")
+    .Arg(
+        "order",
+        "*(type: string; default: 'NCHW')* Order of blob dimensions (only 'NCHW' is supported currently).")
     .Input(0, "logits", "*(type: Tensor`<float>`)* Input tensor.")
     .Input(1, "labels", "*(type: Tensor`<float>`)* Ground truth label tensor.")
     .Input(
@@ -146,6 +160,7 @@ avgloss: 10.667433
     .Output(1, "loss", "*(type: float)* Averaged cross-entropy loss output.");
 
 // Input: X, T, P, dY; Output: dX
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SoftmaxWithLossGradient).NumOutputs(1);
 
 #define DONT_CARE (-1)
@@ -156,6 +171,7 @@ bool SoftmaxWithLossOp<float, CPUContext>::RunOnDevice() {
   auto& T = Input(1); // Labels / targets
 
   const auto canonical_axis = X.canonical_axis_index(axis_);
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   int64_t N, D;
   N = X.size_to_dim(canonical_axis); // batch size
   D = X.size_from_dim(canonical_axis);
@@ -178,43 +194,26 @@ bool SoftmaxWithLossOp<float, CPUContext>::RunOnDevice() {
     }
   }
 
-  if (!sum_multiplier_.defined()) {
-    sum_multiplier_ = caffe2::empty({D}, at::dtype<float>().device(CPU));
-    math::Set<float, CPUContext>(D, 1.f, sum_multiplier_.mutable_data<float>(), &context_);
-  } else if (sum_multiplier_.numel() != D) {
-    sum_multiplier_.Resize(D);
-    math::Set<float, CPUContext>(D, 1.f, sum_multiplier_.mutable_data<float>(), &context_);
-  }
-
   if (!losses_.defined()) {
     losses_ = caffe2::empty({N}, at::dtype<float>().device(CPU));
   } else if (losses_.numel() != N) {
     losses_.Resize(N);
   }
 
-  if (!rowmax_.defined()) {
-    rowmax_ = caffe2::empty({N}, at::dtype<float>().device(CPU));
-  } else if (rowmax_.numel() != N) {
-    rowmax_.Resize(N);
-  }
-
-  SoftmaxCPU(
-      context_,
+  softmax_utils::SoftmaxCPU<float>(
       N,
       D,
+      !label_prob_mode_,
       X.data<float>(),
       Pdata,
       losses_.mutable_data<float>(),
-      sum_multiplier_.data<float>(),
-      !label_prob_mode_,
-      rowmax_.mutable_data<float>());
+      &context_);
 
   // Then compute cross entropy
   float loss_sum = 0.0;
   float weight_sum = 0.0;
   if (!label_prob_mode_) {
     const int* label_data = T.data<int>();
-    const float* Xdata = X.data<float>();
 
     for (int i = 0; i < N; ++i) {
       CAFFE_ENFORCE(
@@ -223,11 +222,13 @@ bool SoftmaxWithLossOp<float, CPUContext>::RunOnDevice() {
           label_data[i],
           " vs ",
           D);
+      // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
       float weight = weights ? weights[i] : 1.0;
       float l = -Pdata[i * D + label_data[i]] * weight;
       loss_sum += l;
       weight_sum += weight;
     }
+    // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
     math::Exp(N * D, Pdata, Pdata, &context_);
   } else {
     const float* label_data = T.data<float>();
@@ -235,6 +236,7 @@ bool SoftmaxWithLossOp<float, CPUContext>::RunOnDevice() {
     for (int i = 0; i < N; ++i) {
       float l = 0.0;
       float total_prob = 0.0;
+      // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
       float weight = weights ? weights[i] : 1.0;
       for (int j = 0; j < D; ++j) {
         CAFFE_ENFORCE(
@@ -261,7 +263,11 @@ bool SoftmaxWithLossOp<float, CPUContext>::RunOnDevice() {
 
   float* avg_loss_data = avg_loss->template mutable_data<float>();
   if (weight_sum != 0.0) {
-    avg_loss_data[0] = loss_sum * scale_ / weight_sum;
+    if (average_by_batch_size_) {
+      avg_loss_data[0] = loss_sum * scale_ / N;
+    } else {
+      avg_loss_data[0] = loss_sum * scale_ / weight_sum;
+    }
   } else {
     avg_loss_data[0] = 0.0;
   }
@@ -279,10 +285,13 @@ bool SoftmaxWithLossGradientOp<float, CPUContext>::RunOnDevice() {
   const float* weights = (InputSize() > 4 ? Input(2).data<float>() : nullptr);
 
   const auto canonical_axis = X.canonical_axis_index(axis_);
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   int N, D;
   N = X.size_to_dim(canonical_axis); // batch size
   D = X.size_from_dim(canonical_axis);
   auto* dX = Output(0, X.sizes(), at::dtype<float>());
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
+  float avg_denominator;
 
   if (label_prob_mode_) {
     CAFFE_ENFORCE_GE(T.dim(), 2);
@@ -314,6 +323,7 @@ bool SoftmaxWithLossGradientOp<float, CPUContext>::RunOnDevice() {
       for (int i = 0; i < N; ++i) {
         int idx = i * D + label_data[i];
         float weight = weights[i];
+        // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
         dX_data[idx] = Pdata[idx] - 1.0;
         for (int d = 0; d < D; d++) {
           int k = i * D + d;
@@ -327,6 +337,7 @@ bool SoftmaxWithLossGradientOp<float, CPUContext>::RunOnDevice() {
         int idx = i * D + label_data[i];
         dX_data[idx] = Pdata[idx] - 1.0f;
       }
+      // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
       total_weight = N;
     }
   } else {
@@ -348,15 +359,22 @@ bool SoftmaxWithLossGradientOp<float, CPUContext>::RunOnDevice() {
           dX_data[idx] = Pdata[idx] - label_data[idx];
         }
       }
+      // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
       total_weight = N;
     }
   }
 
   // Scale by d_avg_loss / N
   if (total_weight > 0) {
+    if (average_by_batch_size_) {
+      // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
+      avg_denominator = N;
+    } else {
+      avg_denominator = total_weight;
+    }
     math::Scale<float, float, CPUContext>(
         dX->numel(),
-        scale_ / total_weight * d_avg_loss.data<float>()[0],
+        scale_ / avg_denominator * d_avg_loss.data<float>()[0],
         dX->data<float>(),
         dX_data,
         &context_);
@@ -381,6 +399,7 @@ class GetSoftmaxWithLossGradient : public GradientMakerBase {
   }
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(SoftmaxWithLoss, GetSoftmaxWithLossGradient);
-}
+} // namespace
 } // namespace caffe2

@@ -11,6 +11,7 @@ namespace caffe2 {
 
 namespace {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static std::atomic<int> counter;
 
 // A net test dummy op that does nothing but scaffolding. Here, we
@@ -42,18 +43,25 @@ class NetTestDummyOp final : public OperatorBase {
   }
 
  protected:
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   const bool fail_;
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(NetTestDummy, NetTestDummyOp);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CUDA_OPERATOR(NetTestDummy, NetTestDummyOp);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(NetTestDummy2, NetTestDummyOp);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CUDA_OPERATOR(NetTestDummy2, NetTestDummyOp);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(NetTestDummy)
     .NumInputs(0, INT_MAX)
     .NumOutputs(0, INT_MAX)
     .AllowInplace({{0, 0}, {1, 1}});
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(NetTestDummy2)
     .NumInputs(0, INT_MAX)
     .NumOutputs(0, INT_MAX)
@@ -88,6 +96,7 @@ unique_ptr<NetBase> CreateNetTestHelper(
 
 } // namespace
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, ConstructionNoDeclaredInputOutput) {
   Workspace ws;
   ws.CreateBlob("in");
@@ -96,6 +105,7 @@ TEST(NetTest, ConstructionNoDeclaredInputOutput) {
   EXPECT_TRUE(net.get() != nullptr);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, ConstructionDeclaredInput) {
   Workspace ws;
   ws.CreateBlob("in");
@@ -104,6 +114,7 @@ TEST(NetTest, ConstructionDeclaredInput) {
   EXPECT_TRUE(net.get() != nullptr);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, ConstructionDeclaredOutput) {
   Workspace ws;
   ws.CreateBlob("in");
@@ -112,17 +123,21 @@ TEST(NetTest, ConstructionDeclaredOutput) {
   EXPECT_TRUE(net.get() != nullptr);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, DeclaredInputInsufficient) {
   Workspace ws;
   ws.CreateBlob("in");
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
   ASSERT_THROW(
       CreateNetTestHelper(&ws, vector<string>{"unuseful_in"}, vector<string>()),
       EnforceNotMet);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetDeathTest, DeclaredOutputNotMet) {
   Workspace ws;
   ws.CreateBlob("in");
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
   ASSERT_THROW(
       CreateNetTestHelper(
           &ws, vector<string>(), vector<string>{"unproduced_out"}),
@@ -144,8 +159,7 @@ void checkChainingAndRun(
   Workspace ws;
   ws.CreateBlob("in");
   NetDef net_def;
-  CAFFE_ENFORCE(
-      TextFormat::ParseFromString(spec, &net_def));
+  CAFFE_ENFORCE(TextFormat::ParseFromString(spec, &net_def));
   {
     net_def.set_num_workers(4);
     std::unique_ptr<NetBase> net(CreateNet(net_def, &ws));
@@ -161,11 +175,11 @@ void checkNumChainsAndRun(const char* spec, const int expected_num_chains) {
   Workspace ws;
 
   NetDef net_def;
-  CAFFE_ENFORCE(
-      TextFormat::ParseFromString(spec, &net_def));
+  CAFFE_ENFORCE(TextFormat::ParseFromString(spec, &net_def));
   net_def.set_num_workers(4);
 
   // Create all external inputs
+  // NOLINTNEXTLINE(performance-for-range-copy)
   for (auto inp : net_def.external_input()) {
     ws.CreateBlob(inp);
   }
@@ -180,6 +194,7 @@ void checkNumChainsAndRun(const char* spec, const int expected_num_chains) {
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, DISABLED_ChainingForLinearModel) {
   const auto spec = R"DOC(
         name: "example"
@@ -199,6 +214,7 @@ TEST(NetTest, DISABLED_ChainingForLinearModel) {
   checkChainingAndRun(spec, {{0, {0, 1}}});
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, DISABLED_ChainingForFork) {
   const auto spec = R"DOC(
         name: "example"
@@ -252,6 +268,7 @@ TEST(NetTest, DISABLED_ChainingForFork) {
 //   checkChainingAndRun(spec, {{0, {0}}, {1, {1}}, {2, {2, 3}}});
 // }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, DISABLED_ChainingForForkJoin) {
   const auto spec = R"DOC(
         name: "example"
@@ -282,6 +299,7 @@ TEST(NetTest, DISABLED_ChainingForForkJoin) {
   checkChainingAndRun(spec, {{0, {0}}, {1, {1}}, {2, {2, 3}}});
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, DISABLED_ChainingForwardBackward) {
   const auto spec = R"DOC(
   name: "gpu_0"
@@ -493,6 +511,7 @@ TEST(NetTest, DISABLED_ChainingForwardBackward) {
   checkNumChainsAndRun(spec, 1);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, DISABLED_ChainingForHogwildModel) {
   const auto spec = R"DOC(
         name: "example"
@@ -532,6 +551,7 @@ TEST(NetTest, DISABLED_ChainingForHogwildModel) {
   checkNumChainsAndRun(spec, 2);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, DISABLED_FailingOperator) {
   const auto spec = R"DOC(
         name: "example"
@@ -557,8 +577,7 @@ TEST(NetTest, DISABLED_FailingOperator) {
   ws.CreateBlob("in");
 
   NetDef net_def;
-  CAFFE_ENFORCE(
-      TextFormat::ParseFromString(spec, &net_def));
+  CAFFE_ENFORCE(TextFormat::ParseFromString(spec, &net_def));
 
   {
     net_def.set_num_workers(4);
@@ -598,10 +617,13 @@ class ExecutorHelperDummyOp final : public OperatorBase {
   }
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(ExecutorHelperDummy, ExecutorHelperDummyOp);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(ExecutorHelperDummy);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, OperatorWithExecutorHelper) {
   const auto spec = R"DOC(
         name: "example"
@@ -612,8 +634,7 @@ TEST(NetTest, OperatorWithExecutorHelper) {
 )DOC";
 
   NetDef net_def;
-  CAFFE_ENFORCE(
-      TextFormat::ParseFromString(spec, &net_def));
+  CAFFE_ENFORCE(TextFormat::ParseFromString(spec, &net_def));
 
   Workspace ws;
   net_def.set_num_workers(kTestPoolSize);
@@ -621,6 +642,7 @@ TEST(NetTest, OperatorWithExecutorHelper) {
   ASSERT_TRUE(net->Run());
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, DISABLED_OperatorWithDisabledEvent) {
   const auto spec = R"DOC(
         name: "example"
@@ -641,8 +663,7 @@ TEST(NetTest, DISABLED_OperatorWithDisabledEvent) {
   ws.CreateBlob("in");
 
   NetDef net_def;
-  CAFFE_ENFORCE(
-      TextFormat::ParseFromString(spec, &net_def));
+  CAFFE_ENFORCE(TextFormat::ParseFromString(spec, &net_def));
 
   {
     std::unique_ptr<NetBase> net(CreateNet(net_def, &ws));
@@ -658,6 +679,7 @@ TEST(NetTest, DISABLED_OperatorWithDisabledEvent) {
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, ExecutorOverride) {
   const auto spec = R"DOC(
         name: "example"
@@ -665,8 +687,7 @@ TEST(NetTest, ExecutorOverride) {
   )DOC";
 
   NetDef net_def;
-  CAFFE_ENFORCE(
-      TextFormat::ParseFromString(spec, &net_def));
+  CAFFE_ENFORCE(TextFormat::ParseFromString(spec, &net_def));
 
   {
     Workspace ws;
@@ -681,6 +702,7 @@ TEST(NetTest, ExecutorOverride) {
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, AsyncEmptyNet) {
   const auto spec = R"DOC(
         name: "example"
@@ -689,8 +711,7 @@ TEST(NetTest, AsyncEmptyNet) {
 
   Workspace ws;
   NetDef net_def;
-  CAFFE_ENFORCE(
-      TextFormat::ParseFromString(spec, &net_def));
+  CAFFE_ENFORCE(TextFormat::ParseFromString(spec, &net_def));
 
   {
     std::unique_ptr<NetBase> net(CreateNet(net_def, &ws));
@@ -704,6 +725,7 @@ TEST(NetTest, AsyncEmptyNet) {
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, DISABLED_RunAsyncFailure) {
   const auto spec = R"DOC(
         name: "example"
@@ -723,8 +745,7 @@ TEST(NetTest, DISABLED_RunAsyncFailure) {
   ws.CreateBlob("in");
 
   NetDef net_def;
-  CAFFE_ENFORCE(
-      TextFormat::ParseFromString(spec, &net_def));
+  CAFFE_ENFORCE(TextFormat::ParseFromString(spec, &net_def));
 
   {
     std::unique_ptr<NetBase> net(CreateNet(net_def, &ws));
@@ -739,6 +760,7 @@ TEST(NetTest, DISABLED_RunAsyncFailure) {
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, NoTypeNet) {
   const auto spec = R"DOC(
         name: "no_type_net"
@@ -746,8 +768,7 @@ TEST(NetTest, NoTypeNet) {
 
   Workspace ws;
   NetDef net_def;
-  CAFFE_ENFORCE(
-      TextFormat::ParseFromString(spec, &net_def));
+  CAFFE_ENFORCE(TextFormat::ParseFromString(spec, &net_def));
 
   {
     std::unique_ptr<NetBase> net(CreateNet(net_def, &ws));
@@ -770,10 +791,13 @@ class NotFinishingOp final : public Operator<CPUContext> {
   }
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(NotFinishingOp, NotFinishingOp);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(NotFinishingOp);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, PendingOpsAndNetFailure) {
   const auto spec = R"DOC(
         name: "example"
@@ -791,14 +815,18 @@ TEST(NetTest, PendingOpsAndNetFailure) {
 )DOC";
 
   NetDef net_def;
-  CAFFE_ENFORCE(
-      TextFormat::ParseFromString(spec, &net_def));
+  CAFFE_ENFORCE(TextFormat::ParseFromString(spec, &net_def));
 
   Workspace ws;
   std::unique_ptr<NetBase> net(CreateNet(net_def, &ws));
 
-  // net is not stuck and returns false
-  ASSERT_FALSE(net->Run());
+  try {
+    // net is not stuck and returns false
+    ASSERT_FALSE(net->Run());
+  } catch (const caffe2::AsyncNetCancelled&) {
+    // Cancellation exception is fine since if the ops run concurrently the
+    // NotFinishingOp may be cancelled with an exception.
+  }
 }
 
 class AsyncErrorOp final : public Operator<CPUContext> {
@@ -824,16 +852,20 @@ class AsyncErrorOp final : public Operator<CPUContext> {
       if (thread_) {
         thread_->join();
       }
-      thread_ = caffe2::make_unique<std::thread>([this]() {
+      thread_ = std::make_unique<std::thread>([this]() {
         try {
           std::this_thread::sleep_for(std::chrono::seconds(sleep_time_s_));
           if (throw_) {
             throw std::logic_error(error_msg_);
           } else {
-            event().SetFinished(error_msg_.c_str());
+            if (!cancel_.test_and_set()) {
+              event().SetFinished(error_msg_.c_str());
+            }
           }
         } catch (...) {
-          event().SetFinishedWithException(error_msg_.c_str());
+          if (!cancel_.test_and_set()) {
+            event().SetFinishedWithException(error_msg_.c_str());
+          }
         }
       });
       return true;
@@ -842,6 +874,10 @@ class AsyncErrorOp final : public Operator<CPUContext> {
 
   bool HasAsyncPart() const override {
     return true;
+  }
+
+  void CancelAsyncCallback() override {
+    cancel_.test_and_set();
   }
 
   ~AsyncErrorOp() override {
@@ -856,9 +892,12 @@ class AsyncErrorOp final : public Operator<CPUContext> {
   bool fail_in_sync_;
   int sleep_time_s_;
   std::string error_msg_;
+  std::atomic_flag cancel_ = ATOMIC_FLAG_INIT;
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(AsyncErrorOp, AsyncErrorOp);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(AsyncErrorOp);
 
 std::unique_ptr<NetBase> AsyncErrorNet(
@@ -892,12 +931,16 @@ std::unique_ptr<NetBase> AsyncErrorNet(
   return CreateNet(net_def, ws);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, AsyncErrorOpTest) {
   Workspace ws;
 
   // Throw in sync part
   auto net = AsyncErrorNet(&ws, "net1", /*throw_*/ true, /*fail_in_sync*/ true);
+#ifdef CAFFE2_USE_EXCEPTION_PTR
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
   ASSERT_THROW(net->Run(), std::logic_error);
+#endif
 
   // Return false in sync part
   net = AsyncErrorNet(&ws, "net2", /*throw_*/ false, /*fail_in_sync*/ true);
@@ -905,13 +948,17 @@ TEST(NetTest, AsyncErrorOpTest) {
 
   // SetFinishedWithException in async part
   net = AsyncErrorNet(&ws, "net3", /*throw_*/ true, /*fail_in_sync*/ false);
+#ifdef CAFFE2_USE_EXCEPTION_PTR
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
   ASSERT_THROW(net->Run(), std::logic_error);
+#endif
 
   // SetFinished(err) in async part
   net = AsyncErrorNet(&ws, "net4", /*throw_*/ false, /*fail_in_sync*/ false);
   ASSERT_FALSE(net->Run());
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, AsyncErrorTimingsTest) {
   Workspace ws;
   std::string spec = R"DOC(
@@ -989,6 +1036,7 @@ class SyncErrorOp final : public Operator<CPUContext> {
     }
   }
 
+  // NOLINTNEXTLINE(modernize-use-equals-default)
   ~SyncErrorOp() override {}
 
  private:
@@ -996,7 +1044,9 @@ class SyncErrorOp final : public Operator<CPUContext> {
   bool throw_;
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(SyncErrorOp, SyncErrorOp);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SyncErrorOp);
 
 std::unique_ptr<NetBase>
@@ -1033,11 +1083,15 @@ ChainErrorNet(Workspace* ws, const std::string& net_name, bool throw_) {
   return CreateNet(net_def, ws);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, ChainErrorTest) {
   Workspace ws;
 
   auto net = ChainErrorNet(&ws, "net1", /*throw_*/ true);
+#ifdef CAFFE2_USE_EXCEPTION_PTR
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
   ASSERT_THROW(net->Run(), std::logic_error);
+#endif
 
   net = ChainErrorNet(&ws, "net2", /*throw_*/ false);
   ASSERT_FALSE(net->Run());
@@ -1096,6 +1150,7 @@ void testProfDAGNetErrorCase(bool test_error) {
       stats_proto.stats_size(), test_error ? 0 : net->GetOperators().size());
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(NetTest, ProfDAGNetErrorTest) {
   testProfDAGNetErrorCase(/*test_error=*/false);
   testProfDAGNetErrorCase(/*test_error=*/true);

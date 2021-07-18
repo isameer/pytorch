@@ -1,6 +1,8 @@
 #include <caffe2/ideep/ideep_utils.h>
 
-namespace caffe2 {
+using namespace caffe2;
+
+namespace {
 
 // RecordShapeOp records the shape of the input tensor to a vector of int. You
 // mostly don't need this operator explicitly, and it is mostly used in the
@@ -63,6 +65,7 @@ class IDEEPShapeOp : public IDEEPOperator {
 };
 
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_IDEEP_OPERATOR(Shape, IDEEPShapeOp);
 
-} // namespace caffe2
+} // namespace

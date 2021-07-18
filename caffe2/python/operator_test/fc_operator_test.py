@@ -1,7 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.proto import caffe2_pb2
 from caffe2.python import core
@@ -44,7 +44,7 @@ class TestFcOperator(serial.SerializedTestCase):
         def fc_op(X, W, b):
             return [np.dot(X, W.reshape(n, k).transpose()) + b.reshape(n)]
 
-        def fc_tranposed_op(X, W, b):
+        def fc_transposed_op(X, W, b):
             return [np.dot(X, W.reshape(k, n)) + b.reshape(n)]
 
         op = core.CreateOperator(
@@ -61,13 +61,13 @@ class TestFcOperator(serial.SerializedTestCase):
             op.arg.extend([a])
 
         # Check against numpy reference
-        # ReferenceChecks is flaky on rocm with threshold of 1e-4 for fp16. Relaxing to 1e-3.
-        threshold = 1e-3 if (gc.device_type == caffe2_pb2.HIP and dtype == np.float16) else 1e-4
+        # ReferenceChecks is flaky, Relaxing to 1e-3.
+        threshold = 1e-3
         self.assertReferenceChecks(
             device_option=gc,
             op=op,
             inputs=[X, W, b],
-            reference=fc_tranposed_op if transposed else fc_op,
+            reference=fc_transposed_op if transposed else fc_op,
             threshold=threshold
         )
         # Check over multiple devices

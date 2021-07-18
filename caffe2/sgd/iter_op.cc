@@ -22,21 +22,27 @@ void MutexSerializer::Serialize(
 
 void MutexDeserializer::Deserialize(const BlobProto& /* unused */, Blob* blob) {
   *blob->GetMutable<std::unique_ptr<std::mutex>>() =
-      caffe2::make_unique<std::mutex>();
+      std::make_unique<std::mutex>();
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(Iter, IterOp<CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(AtomicIter, AtomicIterOp<CPUContext>);
 
 #ifdef CAFFE2_USE_MKLDNN
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_IDEEP_OPERATOR(AtomicIter, IDEEPFallbackOp<AtomicIterOp<CPUContext>>);
 #endif
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_BLOB_SERIALIZER(
     (TypeMeta::Id<std::unique_ptr<std::mutex>>()),
     MutexSerializer);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_BLOB_DESERIALIZER(std::unique_ptr<std::mutex>, MutexDeserializer);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(Iter)
     .NumInputs(0, 1)
     .NumOutputs(1)
@@ -46,10 +52,12 @@ Stores a singe integer, that gets incremented on each call to Run().
 Useful for tracking the iteration count during SGD, for example.
 )DOC");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(AtomicIter)
     .NumInputs(2)
     .NumOutputs(1)
     .EnforceInplace({{1, 0}})
+    .IdenticalTypeAndShapeOfInput(1)
     .SetDoc(R"DOC(
 Similar to Iter, but takes a mutex as the first input to make sure that
 updates are carried out atomically. This can be used in e.g. Hogwild sgd
@@ -58,6 +66,8 @@ algorithms.
     .Input(0, "mutex", "The mutex used to do atomic increment.")
     .Input(1, "iter", "The iter counter as an int64_t TensorCPU.");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 NO_GRADIENT(Iter);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 NO_GRADIENT(AtomicIter);
-}  // namespace caffe2
+} // namespace caffe2

@@ -11,8 +11,11 @@
 #include "caffe2/utils/conversions.h"
 #include "caffe2/utils/math.h"
 
+#include <c10/util/irange.h>
+
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(MathTest, GemmNoTransNoTrans) {
   DeviceOption option;
   CPUContext cpu_context(option);
@@ -88,6 +91,7 @@ TEST(MathTest, GemmNoTransNoTrans) {
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(MathTest, GemmNoTransTrans) {
   DeviceOption option;
   CPUContext cpu_context(option);
@@ -166,6 +170,7 @@ namespace {
 
 constexpr float kEps = 1e-5;
 
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
 class GemmBatchedTest
     : public testing::TestWithParam<testing::tuple<bool, bool>> {
  protected:
@@ -244,15 +249,23 @@ class GemmBatchedTest
     }
   }
 
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   DeviceOption option_;
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   std::unique_ptr<CPUContext> cpu_context_;
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   Tensor X_;
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   Tensor W_;
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   Tensor Y_;
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   bool trans_X_;
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   bool trans_W_;
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST_P(GemmBatchedTest, GemmBatchedFloatTest) {
   RunGemmBatched(1.0f, 0.0f);
   VerifyOutput(10.0f);
@@ -262,6 +275,7 @@ TEST_P(GemmBatchedTest, GemmBatchedFloatTest) {
   VerifyOutput(20.0f);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST_P(GemmBatchedTest, GemmStridedBatchedFloatTest) {
   RunGemmStridedBatched(1.0f, 0.0f);
   VerifyOutput(10.0f);
@@ -271,6 +285,7 @@ TEST_P(GemmBatchedTest, GemmStridedBatchedFloatTest) {
   VerifyOutput(20.0f);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 INSTANTIATE_TEST_CASE_P(
     GemmBatchedTrans,
     GemmBatchedTest,
@@ -278,6 +293,7 @@ INSTANTIATE_TEST_CASE_P(
 
 } // namespace
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(MathTest, GemvNoTrans) {
   DeviceOption option;
   CPUContext cpu_context(option);
@@ -344,6 +360,7 @@ TEST(MathTest, GemvNoTrans) {
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(MathTest, GemvTrans) {
   DeviceOption option;
   CPUContext cpu_context(option);
@@ -410,6 +427,7 @@ TEST(MathTest, GemvTrans) {
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(MathTest, FloatToHalfConversion) {
   float a = 1.0f;
   float b = 1.75f;
@@ -456,18 +474,23 @@ class BroadcastTest : public testing::Test {
         Y_.mutable_data<float>(),
         cpu_context_.get());
     ASSERT_EQ(Y_data.size(), Y_.numel());
-    for (int i = 0; i < Y_data.size(); ++i) {
+    for (const auto i : c10::irange(Y_data.size())) {
       EXPECT_FLOAT_EQ(Y_data[i], Y_.data<float>()[i]);
     }
   }
 
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   DeviceOption option_;
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   std::unique_ptr<CPUContext> cpu_context_;
 
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   Tensor X_;
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   Tensor Y_;
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST_F(BroadcastTest, BroadcastFloatTest) {
   RunBroadcastTest({2}, {2}, {1.0f, 2.0f}, {1.0f, 2.0f});
   RunBroadcastTest({1}, {2}, {1.0f}, {1.0f, 1.0f});
@@ -485,83 +508,17 @@ class RandFixedSumTest : public testing::Test {
   void SetUp() override {
     cpu_context_ = make_unique<CPUContext>(option_);
   }
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   DeviceOption option_;
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   std::unique_ptr<CPUContext> cpu_context_;
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST_F(RandFixedSumTest, UpperBound) {
   std::vector<int> l(20);
   math::RandFixedSum<int, CPUContext>(
       20, 1, 1000, 1000, l.data(), cpu_context_.get());
-}
-
-class TransposeTest : public testing::Test {
- protected:
-  void SetUp() override {
-    cpu_context_ = make_unique<CPUContext>(option_);
-  }
-
-  void RunTransposeTest(
-      const std::vector<int>& X_dims,
-      const std::vector<int>& axes,
-      const std::vector<float>& X_data,
-      const std::vector<float>& Y_data) {
-    const int ndim = X_dims.size();
-    std::vector<int> Y_dims(ndim);
-    for (int i = 0; i < ndim; ++i) {
-      Y_dims[i] = X_dims[axes[i]];
-    }
-    std::vector<int64_t> X_dims_64;
-    std::vector<int64_t> Y_dims_64;
-    std::copy(X_dims.cbegin(), X_dims.cend(), std::back_inserter(X_dims_64));
-    std::copy(Y_dims.cbegin(), Y_dims.cend(), std::back_inserter(Y_dims_64));
-    ReinitializeTensor(&X_, X_dims_64, at::dtype<float>().device(CPU));
-    ReinitializeTensor(&Y_, Y_dims_64, at::dtype<float>().device(CPU));
-    ASSERT_EQ(X_data.size(), X_.numel());
-    cpu_context_->CopyFromCPU<float>(
-        X_data.size(), X_data.data(), X_.mutable_data<float>());
-    math::Transpose<float, CPUContext>(
-        X_dims.size(),
-        X_dims.data(),
-        axes.data(),
-        X_.data<float>(),
-        Y_.mutable_data<float>(),
-        cpu_context_.get());
-    ASSERT_EQ(Y_data.size(), Y_.numel());
-    for (int i = 0; i < Y_.numel(); ++i) {
-      EXPECT_FLOAT_EQ(Y_data[i], Y_.data<float>()[i]);
-    }
-  }
-
-  DeviceOption option_;
-  std::unique_ptr<CPUContext> cpu_context_;
-
-  Tensor X_;
-  Tensor Y_;
-};
-
-TEST_F(TransposeTest, TransposeFloatTest) {
-  // Test for 1D transpose.
-  RunTransposeTest({3}, {0}, {1.0f, 2.0f, 3.0f}, {1.0f, 2.0f, 3.0f});
-
-  // Test for 2D transpose.
-  RunTransposeTest(
-      {2, 3},
-      {1, 0},
-      {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f},
-      {1.0f, 4.0f, 2.0f, 5.0f, 3.0f, 6.0f});
-
-  // Test for 3D transpose.
-  RunTransposeTest(
-      {2, 2, 2},
-      {1, 2, 0},
-      {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f},
-      {1.0f, 5.0f, 2.0f, 6.0f, 3.0f, 7.0f, 4.0f, 8.0f});
-  RunTransposeTest(
-      {2, 2, 2},
-      {1, 0, 2},
-      {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f},
-      {1.0f, 2.0f, 5.0f, 6.0f, 3.0f, 4.0f, 7.0f, 8.0f});
 }
 
 } // namespace

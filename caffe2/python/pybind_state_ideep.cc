@@ -20,9 +20,12 @@ USE_IDEEP_DEF_ALIASES();
 class IDeepFetcher;
 class IDeepFeeder;
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_IDEEP_OPERATOR(Python, IDEEPFallbackOp<PythonOp<CPUContext, false>>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_BLOB_FETCHER((TypeMeta::Id<itensor>()), IDeepFetcher);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_BLOB_FEEDER(IDEEP, IDeepFeeder);
 
 class IDeepFetcher : public BlobFetcherBase {
@@ -59,15 +62,17 @@ public:
                   (atensor.get_nelems() == 0 ||
                    atensor.get_data_handle() != nullptr),
                   "Trying to fetch uninitialized tensor");
-    const int numpy_type = CaffeToNumpyType(type_transform(atensor));
+    // NOTE: Only support float so far.
+    const int numpy_type = NPY_FLOAT;
     CAFFE_ENFORCE(
         numpy_type != -1,
         "Unsupported ideep memory data type? This usually should not happen "
         "since ideep memory usually only do float and double.");
-    itensor::dims dims = atensor.get_dims();
+    itensor::dims dims = atensor.get_public_format_dims();
     std::vector<npy_intp> npy_dims(dims.begin(), dims.end());
 
     result.copied = force_copy || atensor.need_reorder();
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
     void *outPtr;
     if (result.copied) {
       result.obj = py::reinterpret_steal<py::object>(
@@ -85,7 +90,7 @@ public:
     }
 
     if (result.copied) {
-      atensor.reorder_to(outPtr);
+      atensor.to_public(outPtr);
     }
 
     return result;
@@ -96,7 +101,7 @@ public:
 };
 
 class IDeepFeeder : public BlobFeederBase {
-  itensor::data_type type_transform(const TypeMeta &meta) {
+  itensor::data_type type_transform(const TypeMeta meta) {
     if (meta == TypeMeta::Make<float>())
       return itensor::data_type::f32;
     else if (meta == TypeMeta::Make<int>())
@@ -106,7 +111,7 @@ class IDeepFeeder : public BlobFeederBase {
     else if (meta == TypeMeta::Make<uint8_t>())
       return itensor::data_type::u8;
     else
-      return itensor::data_type::data_undef;
+      return itensor::data_type::undef;
   }
 
 public:
@@ -118,10 +123,10 @@ public:
     PyArrayObject *array = PyArray_GETCONTIGUOUS(original_array);
     auto g = MakeGuard([&]() { Py_XDECREF(array); });
     const auto npy_type = PyArray_TYPE(array);
-    const TypeMeta &meta = NumpyTypeToCaffe(npy_type);
+    const TypeMeta meta = NumpyTypeToCaffe(npy_type);
     CAFFE_ENFORCE_NE(
-        meta.id(),
-        TypeIdentifier::uninitialized(),
+        meta,
+        ScalarType::Undefined,
         "This numpy data type is not supported: ",
         PyArray_TYPE(array), ".");
 
@@ -143,7 +148,7 @@ public:
         if (tensor->get_dims() != adims || type != tensor->get_data_type()) {
           tensor->resize(adims, type);
         }
-        tensor->reorder_from(adims, type,
+        tensor->feed_from(adims, type,
                              static_cast<void *>(PyArray_DATA(array)));
     }
 #else
@@ -171,9 +176,11 @@ public:
       auto g = MakeGuard([&]() { Py_XDECREF(array); });
 
       const auto npy_type = PyArray_TYPE(array);
-      const TypeMeta &meta = NumpyTypeToCaffe(npy_type);
+      const TypeMeta meta = NumpyTypeToCaffe(npy_type);
+
       // TODO: if necessary, use dispatcher.
-      if (meta.Match<float>() && !ZeroDim(original_array)) {
+      if ((in_place && blob->IsType<itensor>())
+          || (meta.Match<float>() && !ZeroDim(original_array))) {
         FeedTensor(option, original_array, blob->GetMutable<itensor>());
       } else {
         DeviceOption cpu_option(option);
@@ -181,9 +188,9 @@ public:
         TensorFeeder<CPUContext> cpu_tensor_feeder;
         if (in_place) {
           cpu_tensor_feeder.FeedTensor(
-              option,
+              cpu_option,
               original_array,
-              BlobGetMutableTensor(blob, OptionToDevice(option).type()),
+              BlobGetMutableTensor(blob, OptionToDevice(cpu_option).type()),
               true);
         } else {
           blob->Reset<Tensor>(new Tensor(

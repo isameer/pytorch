@@ -12,12 +12,14 @@
   ASSERT_EQ(tensor.dtype(), (type_));                                      \
   ASSERT_TRUE(tensor.layout() == (layout_))
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(TensorTest, AllocatesTensorOnTheCorrectDevice_MultiCUDA) {
   auto tensor = at::tensor({1, 2, 3}, at::device({at::kCUDA, 1}));
   ASSERT_EQ(tensor.device().type(), at::Device::Type::CUDA);
   ASSERT_EQ(tensor.device().index(), 1);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(TensorTest, ToDevice_MultiCUDA) {
   auto tensor = at::empty({3, 4});
   REQUIRE_TENSOR_OPTIONS(at::kCPU, -1, at::kFloat, at::kStrided);
@@ -59,6 +61,7 @@ TEST(TensorTest, ToDevice_MultiCUDA) {
   REQUIRE_TENSOR_OPTIONS(at::kCUDA, 0, at::kInt, at::kStrided);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(TensorTest, ToTensorAndTensorAttributes_MultiCUDA) {
   auto tensor = at::empty({3, 4});
   REQUIRE_TENSOR_OPTIONS(at::kCPU, -1, at::kFloat, at::kStrided);
@@ -83,20 +86,22 @@ TEST(TensorTest, ToTensorAndTensorAttributes_MultiCUDA) {
 }
 
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(TensorTest, ToDoesNotCopyWhenOptionsAreAllTheSame_CUDA) {
   auto tensor = at::empty({3, 4}, at::TensorOptions(at::kFloat).device(at::Device("cuda")));
   auto hopefully_not_copy = tensor.to(tensor.options());
-  ASSERT_EQ(hopefully_not_copy.data<float>(), tensor.data<float>());
+  ASSERT_EQ(hopefully_not_copy.data_ptr<float>(), tensor.data_ptr<float>());
   hopefully_not_copy = tensor.to(at::kFloat);
-  ASSERT_EQ(hopefully_not_copy.data<float>(), tensor.data<float>());
+  ASSERT_EQ(hopefully_not_copy.data_ptr<float>(), tensor.data_ptr<float>());
   hopefully_not_copy = tensor.to("cuda");
-  ASSERT_EQ(hopefully_not_copy.data<float>(), tensor.data<float>());
+  ASSERT_EQ(hopefully_not_copy.data_ptr<float>(), tensor.data_ptr<float>());
   hopefully_not_copy = tensor.to(at::TensorOptions("cuda"));
-  ASSERT_EQ(hopefully_not_copy.data<float>(), tensor.data<float>());
+  ASSERT_EQ(hopefully_not_copy.data_ptr<float>(), tensor.data_ptr<float>());
   hopefully_not_copy = tensor.to(at::TensorOptions(at::kFloat));
-  ASSERT_EQ(hopefully_not_copy.data<float>(), tensor.data<float>());
+  ASSERT_EQ(hopefully_not_copy.data_ptr<float>(), tensor.data_ptr<float>());
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(TensorTest, ToDeviceAndDtype_MultiCUDA) {
   auto tensor = at::empty({3, 4});
   REQUIRE_TENSOR_OPTIONS(at::kCPU, -1, at::kFloat, at::kStrided);
@@ -112,4 +117,18 @@ TEST(TensorTest, ToDeviceAndDtype_MultiCUDA) {
 
   tensor = tensor.to(at::kCPU, at::kInt);
   REQUIRE_TENSOR_OPTIONS(at::kCPU, -1, at::kInt, at::kStrided);
+}
+
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+TEST(TensorTest, MagmaInitializesCorrectly_CUDA) {
+  // Any tensor will work here as long as it's invertible
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
+  float data[] = { 1, 1, 1, 0,
+                   0, 3, 1, 2,
+                   2, 3, 1, 0,
+                   1, 0, 2, 1 };
+  auto tensor = at::from_blob(data, {4, 4}, at::TensorOptions(at::kFloat)).cuda();
+  if (at::hasMAGMA()) {
+    at::inverse(tensor);
+  }
 }

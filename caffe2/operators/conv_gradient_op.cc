@@ -7,7 +7,7 @@ namespace caffe2 {
 std::vector<TensorShape> TensorInferenceForConvGradient(
     const OperatorDef& def,
     const std::vector<TensorShape>& in) {
-  CAFFE_ENFORCE_EQ(in.size(), 3, "ConvGradient requires 3 inputs");
+  CAFFE_ENFORCE_EQ(in.size(), 3U, "ConvGradient requires 3 inputs");
 
   if (in[0].unknown_shape()) {
     std::vector<TensorShape> out(1);
@@ -37,7 +37,7 @@ std::vector<TensorShape> TensorInferenceForConvGradient(
 OpSchema::Cost CostInferenceForConvGradient(
     const OperatorDef& def,
     const vector<TensorShape>& inputs) {
-  CAFFE_ENFORCE_EQ(inputs.size(), 3, "ConvGradient requires 3 inputs");
+  CAFFE_ENFORCE_EQ(inputs.size(), 3U, "ConvGradient requires 3 inputs");
   ArgumentHelper helper(def);
   const auto order =
       StringToStorageOrder(helper.GetSingleArgument<string>("order", "NCHW"));
@@ -81,20 +81,28 @@ OpSchema::Cost CostInferenceForConvGradient(
   return c;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(ConvGradient, ConvGradientOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(ConvGradient)
     .NumInputs(2, 3)
     .NumOutputs(1, 3)
     .TensorInferenceFunction(TensorInferenceForConvGradient)
     .CostInferenceFunction(CostInferenceForConvGradient);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(Conv1DGradient, ConvGradientOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(Conv1DGradient).NumInputs(2, 3).NumOutputs(1, 3);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(Conv2DGradient, ConvGradientOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(Conv2DGradient).NumInputs(2, 3).NumOutputs(1, 3);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(Conv3DGradient, ConvGradientOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(Conv3DGradient).NumInputs(2, 3).NumOutputs(1, 3);
 
 class GetConvGradient : public GradientMakerBase {
@@ -104,6 +112,7 @@ class GetConvGradient : public GradientMakerBase {
 
     ArgumentHelper argsHelper(def_);
 
+    // NOLINTNEXTLINE(modernize-use-bool-literals)
     auto compute_dX = !argsHelper.GetSingleArgument<bool>("no_gradient_to_input", 0);
 
     if (def_.input_size() == 3) {
@@ -139,9 +148,13 @@ class GetConvGradient : public GradientMakerBase {
     }
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(Conv, GetConvGradient);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(Conv1D, GetConvGradient);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(Conv2D, GetConvGradient);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(Conv3D, GetConvGradient);
 
 } // namespace caffe2

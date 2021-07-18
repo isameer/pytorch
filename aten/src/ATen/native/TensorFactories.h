@@ -1,5 +1,9 @@
 #pragma once
 
+#include <ATen/Functions.h>
+#include <ATen/Utils.h>
+#include <ATen/native/DispatchStub.h>
+#include <ATen/native/TensorIterator.h>
 #include <c10/core/TensorOptions.h>
 
 namespace at { namespace native {
@@ -48,21 +52,45 @@ inline int64_t get_tril_size(int64_t row, int64_t col, int64_t offset) {
 }
 
 inline void check_args(
-    int64_t row, int64_t col, const TensorOptions& options) {
-  AT_CHECK(row >= 0, "row must be non-negative, got", row);
-  AT_CHECK(col >= 0, "col must be non-negative, got", col);
-  if (options.has_layout()) {
-    AT_CHECK(
-      options.layout() == at::kStrided,
+    int64_t row, int64_t col, c10::optional<Layout> layout_opt) {
+  TORCH_CHECK(row >= 0, "row must be non-negative, got", row);
+  TORCH_CHECK(col >= 0, "col must be non-negative, got", col);
+  if (layout_opt.has_value()) {
+    TORCH_CHECK(
+      *layout_opt == at::kStrided,
       "only support layout=torch.strided, got",
-      options.layout())
+      *layout_opt)
   }
 }
 
-inline void check_size_nonnegative(IntArrayRef size) {
-  for (auto x: size) {
-    AT_CHECK(x >= 0, "Trying to create tensor with negative dimension ", x, ": ", size);
+using at::check_size_nonnegative;
+
+// assumes maximum value in created tensor is n-1 (e.g., torch.randperm(n))
+inline void check_supported_max_int_with_precision(int64_t n, const Tensor& tensor) {
+  // match defined() to behavior of checks below
+  TORCH_CHECK(at::scalar_tensor(n>0?n-1:n, tensor.options()).defined(),
+              "n is too large for result tensor type: '", tensor.toString(), "'");
+
+  // Ensure sufficient precision for floating point representation.
+  switch (tensor.scalar_type()) {
+    case at::ScalarType::Half:
+      TORCH_CHECK(n <= (int64_t(1) << 11) + 1, "n cannot be greater than 2049 for Half type.");
+      break;
+    case at::ScalarType::Float:
+      TORCH_CHECK(n <= (int64_t(1) << 24) + 1, "n cannot be greater than 2^24+1 for Float type.");
+      break;
+    case at::ScalarType::Double:  // Unlikely to happen, but doesn't hurt to check
+      TORCH_CHECK(n <= (int64_t(1) << 53) + 1, "n cannot be greater than 2^53+1 for Double type.");
+      break;
+    default:
+      break;
   }
 }
+
+using binary_fn = void (*)(TensorIterator&);
+
+DECLARE_DISPATCH(binary_fn, complex_stub);
+DECLARE_DISPATCH(binary_fn, polar_stub);
+
 } // namespace native
 } // namespace at

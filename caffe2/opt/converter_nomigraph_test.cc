@@ -3,10 +3,12 @@
 
 #include <gtest/gtest.h>
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(Converter, Basic) {
   using namespace caffe2::testing;
   caffe2::NetDef net;
   for (auto i = 0; i < 10; ++i) {
+    // NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.rand)
     if (rand() % 2) {
       NetMutator(&net)
           .newOp("Conv", {"X", "W" + c10::to_string(i)}, {"X"})
@@ -25,6 +27,7 @@ TEST(Converter, Basic) {
   auto new_netdef = caffe2::convertToCaffe2Proto(nn);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(Converter, UnknownType) {
   using namespace caffe2::testing;
   caffe2::NetDef net;
@@ -33,6 +36,17 @@ TEST(Converter, UnknownType) {
       .setDeviceOptionName("device_" + c10::to_string(rand() % 2));
   auto nn = caffe2::convertToNNModule(net);
   auto new_netdef = caffe2::convertToCaffe2Proto(nn);
+}
+
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+TEST(Converter, SpecializeConverter) {
+  using namespace caffe2::testing;
+  caffe2::NetDef net;
+  NetMutator(&net).newOp("Slice", {"X"}, {"X"}).setDeviceOptionName("abc");
+  EXPECT_EQ(net.op(0).device_option().node_name(), "abc");
+  auto nn = caffe2::convertToNNModule(net);
+  auto new_netdef = caffe2::convertToCaffe2Proto(nn);
+  EXPECT_EQ(new_netdef.op(0).device_option().node_name(), "abc");
 }
 
 caffe2::NetDef fakeNet() {
@@ -47,6 +61,7 @@ caffe2::NetDef fakeNet() {
   return net;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(Converter, ExternalInputs) {
   auto net = fakeNet();
 
@@ -58,6 +73,7 @@ TEST(Converter, ExternalInputs) {
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(Converter, ExternalOutputs) {
   auto net = fakeNet();
 
@@ -69,6 +85,7 @@ TEST(Converter, ExternalOutputs) {
   }
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(Converter, InjectDataEdgeIndicators) {
   auto net = fakeNet();
   caffe2::injectDataEdgeIndicators(&net);

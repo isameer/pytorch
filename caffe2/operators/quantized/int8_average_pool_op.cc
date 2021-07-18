@@ -2,13 +2,16 @@
 
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     Int8AveragePool,
     int8::Int8AveragePoolOp<int8::Activation::NONE>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     Int8AveragePoolRelu,
     int8::Int8AveragePoolOp<int8::Activation::RELU>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
 const char kAveragePoolDoc_int8[] = R"DOC(
 consumes an input blob X and applies average pooling across the
 the blob according to kernel sizes, stride sizes, and pad lengths defined by the
@@ -20,19 +23,11 @@ data into the output blob Y for further processing.
 std::function<void(OpSchema&)> AveragePoolDocGenerator(
     const char* dim,
     bool relu_fused = false) {
-  auto suffix = relu_fused ? " Output will go through rectified linear "
-                             "function, where y = max(0, x)."
-                           : "";
   return [=](OpSchema& schema) {
     string doc = "AveragePool{dim} {pool_doc}";
     c10::ReplaceAll(doc, "{dim}", dim);
     c10::ReplaceAll(doc, "{pool_doc}", kAveragePoolDoc_int8);
     schema.SetDoc(doc);
-    string output_doc =
-        "Output data tensor from average pooling across the input "
-        "tensor. Dimensions will vary based on various kernel, stride, and pad "
-        "sizes.{suffix}";
-    c10::ReplaceAll(output_doc, "{suffix}", suffix);
     schema.Input(
         0,
         "X",
@@ -42,10 +37,18 @@ std::function<void(OpSchema&)> AveragePoolDocGenerator(
         "size, C is the number of channels, and H and W are the height and the "
         "width of the data. The corresponding permutation of dimensions is "
         "used in the latter case.");
-    schema.Output(0, "Y", output_doc.c_str());
+    schema.Output(0, "Y", relu_fused ?
+        "Output data tensor from average pooling across the input "
+        "tensor. Dimensions will vary based on various kernel, stride, and pad "
+        "sizes. Output will go through rectified linear "
+        "function, where y = max(0, x)." :
+        "Output data tensor from average pooling across the input "
+        "tensor. Dimensions will vary based on various kernel, stride, and pad "
+        "sizes.");
   };
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(Int8AveragePool)
     .NumInputs(1)
     .NumOutputs(1)
@@ -54,6 +57,7 @@ OPERATOR_SCHEMA(Int8AveragePool)
     .TensorInferenceFunction(ConvPoolOpBase<CPUContext>::TensorInferenceForPool)
     .FillUsing(AveragePoolDocGenerator(""));
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(Int8AveragePoolRelu)
     .NumInputs(1)
     .NumOutputs(1)

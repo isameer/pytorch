@@ -4,11 +4,28 @@
 
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(SparseToDense, SparseToDenseOp<CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SparseToDense)
     .NumInputs(2, 3)
     .NumOutputs(1)
+    .TensorInferenceFunction([](const OperatorDef& def,
+                                const vector<TensorShape>& in) {
+      vector<TensorShape> out(1);
+      if (in.size() == 3) {
+        out[0].add_dims(in[2].dims(0));
+      } else {
+        out[0].set_unknown_shape(true);
+        return out;
+      }
+      for (int i = 1; i < in[1].dims().size(); i++) {
+        out[0].add_dims(in[1].dims(i));
+      }
+      out[0].set_data_type(in[1].data_type());
+      return out;
+    })
     .SetDoc(R"DOC(
 Convert sparse representations to dense with given indices.
 
@@ -54,6 +71,7 @@ class GetSparseToDenseGradient : public GradientMakerBase {
   }
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(SparseToDense, GetSparseToDenseGradient);
 }
 } // namespace caffe2

@@ -2,6 +2,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <poll.h>
@@ -10,6 +11,7 @@
 #include <sstream>
 #include <iostream>
 #include <cstring>
+#include <cstddef>
 
 #include <libshm/err.h>
 #include <libshm/alloc_info.h>
@@ -38,8 +40,9 @@ protected:
     return address;
   }
 
+  // Implemented based on https://man7.org/linux/man-pages/man7/unix.7.html
   size_t address_length(struct sockaddr_un address) {
-    return strlen(address.sun_path) + sizeof(address.sun_family);
+    return offsetof(sockaddr_un, sun_path) + strlen(address.sun_path) + 1;
   }
 
   void recv(void *_buffer, size_t num_bytes) {
@@ -111,6 +114,12 @@ public:
     }
   }
 
+  void remove() {
+    struct stat file_stat;
+    if (fstat(socket_fd, &file_stat) == 0)
+      SYSCHECK_ERR_RETURN_NEG1(unlink(socket_path.c_str()));
+  }
+
   virtual ~ManagerServerSocket() {
     unlink(socket_path.c_str());
   }
@@ -141,7 +150,6 @@ public:
 
   void register_allocation(AllocInfo &info) {
     char buffer[3] = {0, 0, 0};
-    ssize_t bytes_read;
     send(&info, sizeof(info));
     recv(buffer, 2);
     if (strcmp(buffer, "OK") != 0)

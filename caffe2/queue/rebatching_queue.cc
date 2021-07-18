@@ -19,7 +19,7 @@ void concat(
   // Precompute the output sizes to avoid resizing
   std::vector<std::vector<int64_t>> outputDims(numTensors);
 
-  for (int i = 0; i < numTensors; ++i) {
+  for (size_t i = 0; i < numTensors; ++i) {
     SmartTensorPrinter::PrintTensor(inputZero.at(i));
     outputDims[i] = inputZero.at(i).sizes().vec();
     outputDims[i].insert(outputDims[i].begin(), numRows);
@@ -27,14 +27,15 @@ void concat(
 
   // Resize to the final output size
   std::vector<void*> destinations(numTensors);
-  for (int i = 0; i < numTensors; ++i) {
+  for (size_t i = 0; i < numTensors; ++i) {
     outputs[i]->Resize(outputDims[i]);
     destinations[i] = outputs[i]->raw_mutable_data(inputZero[i].meta());
   }
 
-  for (int i = 0; i < numRows; ++i) {
+  for (size_t i = 0; i < numRows; ++i) {
     CAFFE_ENFORCE_EQ(inputs[i].size(), numTensors);
 
+    // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
     for (int j = 0; j < numTensors; ++j) {
       const auto& input = inputs[i][j];
 
@@ -183,6 +184,7 @@ bool RebatchingQueue::enqueue(
     std::vector<std::vector<TensorCPU>> splittedInputs) {
   int idx = 0;
   for (;;) {
+    // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
     if (idx >= splittedInputs.size()) {
       break;
     }
@@ -200,6 +202,7 @@ bool RebatchingQueue::enqueue(
 
       do {
         queue_[head_++ % capacity()] = std::move(splittedInputs[idx++]);
+      // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
       } while (canWrite() && idx < splittedInputs.size());
     }
 

@@ -1,22 +1,28 @@
-#include <ATen/native/TensorIterator.h>
+#include <ATen/TensorIterator.h>
 #include <ATen/Parallel.h>
 #include <algorithm>
 #include <memory>
+#include <ATen/Functions.h>
+#include <ATen/TensorOperators.h>
+#include <ATen/TensorIteratorInternal.h>
+
+#include <c10/util/irange.h>
 
 /// Contains the implementation of parallel reductions in TensorIterator.
 
 namespace at {
 
-using loop2d_t = TensorIterator::loop2d_t;
+using loop2d_t = TensorIteratorBase::loop2d_t;
 
-static bool use_two_pass_reduction(TensorIterator& iter);
-static void two_pass_reduction(TensorIterator& iter, const loop2d_t& loop);
-static void parallel_dim_reduction(TensorIterator& iter, const loop2d_t& loop);
+static bool use_two_pass_reduction(TensorIteratorBase& iter);
+static void two_pass_reduction(TensorIteratorBase& iter, loop2d_t loop);
+static void parallel_dim_reduction(TensorIteratorBase& iter, loop2d_t loop);
 
-void TensorIterator::parallel_reduce(const loop2d_t& loop) {
-  AT_CHECK(ntensors() == 2, "parallel_reduce only supports one input and one output");
+void TensorIteratorBase::parallel_reduce(loop2d_t loop) {
+  TORCH_CHECK(ntensors() == 2, "parallel_reduce only supports one input and one output");
   int64_t numel = this->numel();
-  if (numel < at::internal::GRAIN_SIZE || at::get_max_threads() == 1 || at::in_parallel_region()) {
+  if (numel < at::internal::GRAIN_SIZE || at::get_num_threads() == 1 ||
+      at::in_parallel_region()) {
     serial_for_each(loop, {0, numel});
   } else if (use_two_pass_reduction(*this)) {
     two_pass_reduction(*this, loop);
@@ -25,47 +31,47 @@ void TensorIterator::parallel_reduce(const loop2d_t& loop) {
   }
 }
 
-static bool use_two_pass_reduction(TensorIterator& iter) {
-  return iter.tensor(0).numel() == 1;
+static bool use_two_pass_reduction(TensorIteratorBase& iter) {
+  return iter.output(0).numel() == 1;
 }
 
-static void two_pass_reduction(TensorIterator& iter, const loop2d_t& loop) {
-  int max_threads = at::get_max_threads();
+static void two_pass_reduction(TensorIteratorBase& iter, loop2d_t loop) {
+  const int max_threads = at::get_num_threads();
 
-  auto& dst = iter.tensor(0);
-  auto buffer_shape = DimVector(dst.sizes());
-  buffer_shape.insert(buffer_shape.begin(), max_threads);
-  auto buffer = at::empty(buffer_shape, dst.type());
+  auto dst = iter.output(0);
+  auto unsqueezed = dst.unsqueeze(0);
+  auto buffer_shape = DimVector(unsqueezed.sizes());
+  buffer_shape[0] = max_threads;
+  auto buffer = at::empty(buffer_shape, dst.options());
+  // Fill with the identity
+  buffer.copy_(unsqueezed);
 
-  std::unique_ptr<bool[]> written(new bool[max_threads]);
-  std::fill(written.get(), written.get() + max_threads, false);
+  auto buffer_stride = buffer.strides()[0] * buffer.element_size();
+  auto buffer_0 = buffer[0];
+  auto first_reduce = TensorIterator::reduce_op(buffer_0, iter.input(0));
+  TORCH_INTERNAL_ASSERT(first_reduce.output(0).is_alias_of(buffer_0));
 
   at::parallel_for(0, iter.numel(), internal::GRAIN_SIZE, [&](int64_t begin, int64_t end) {
-    int thread_num = at::get_thread_num();
-    written[thread_num] = true;
-    auto slice = buffer[thread_num];
-    slice.copy_(dst);
+    const auto thread_num = at::get_thread_num();
+    auto shape = first_reduce.shape();
+    auto strides = first_reduce.get_strides();
 
-    auto sub_iter = TensorIterator::reduce_op(slice, iter.tensor(1));
-    sub_iter->serial_for_each(loop, {begin, end});
+    // Bump output ptr so each thread has its own ouput slice
+    auto base_ptrs = first_reduce.get_base_ptrs();
+    base_ptrs[0] += buffer_stride * thread_num;
+
+    at::internal::serial_for_each(shape, strides, base_ptrs.data(),
+                                  base_ptrs.size(), loop, {begin, end});
   });
 
-  // fill any unwritten slices of the buffer with the identity
-  for (int thread_num = 0; thread_num < max_threads; thread_num++) {
-    if (!written[thread_num]) {
-      buffer[thread_num].copy_(dst);
-    }
-  }
-
-  auto unsqueezed = dst.unsqueeze(0);
   auto final_reduce = TensorIterator::reduce_op(unsqueezed, buffer);
-  final_reduce->for_each(loop);
+  final_reduce.for_each(loop);
 }
 
 /// Chooses a dimension over which to parallelize. Prefers the outer-most
 /// dimension thats larger than the number of available threads.
-static int find_split_dim(TensorIterator& iter) {
-  int num_threads = at::get_max_threads();
+static int find_split_dim(TensorIteratorBase& iter) {
+  int num_threads = at::get_num_threads();
   auto shape = iter.shape();
 
   // start with the outer-most dimension
@@ -83,7 +89,7 @@ static int find_split_dim(TensorIterator& iter) {
 }
 
 static std::tuple<int64_t, int64_t>
-round_columns(TensorIterator& iter, int dim, int multiple, int64_t begin, int64_t end) {
+round_columns(TensorIteratorBase& iter, int dim, int multiple, int64_t begin, int64_t end) {
   begin = begin - (begin % multiple);
   if (end != iter.shape()[dim]) {
     // only round the 'end' column down if it's not the final column
@@ -92,7 +98,7 @@ round_columns(TensorIterator& iter, int dim, int multiple, int64_t begin, int64_
   return std::make_tuple(begin, end);
 }
 
-static void parallel_dim_reduction(TensorIterator& iter, const loop2d_t& loop) {
+static void parallel_dim_reduction(TensorIteratorBase& iter, loop2d_t loop) {
   AT_ASSERT(iter.ndim() >= 1);
   int dim = find_split_dim(iter);
   int64_t cols = iter.shape()[dim];
@@ -115,24 +121,26 @@ static void parallel_dim_reduction(TensorIterator& iter, const loop2d_t& loop) {
   });
 }
 
-void TensorIterator::foreach_reduced_elt(const loop_subiter_t &loop, bool parallelize) {
-  AT_ASSERT(ntensors() == 2 && num_outputs_ == 1);
+void TensorIteratorBase::foreach_reduced_elt(loop_subiter_t loop, bool parallelize) {
+  AT_ASSERT(ninputs() == 1);
+  AT_ASSERT(noutputs() >= 1);
 
   auto shape = this->shape();
-  if (tensor(0).numel() == 0) {
+  if (output(0).numel() == 0) {
     return;
   }
-  if (tensor(0).numel() == 1) {
+  if (output(0).numel() == 1) {
     loop(*this);
   }
-  else if (numel() < at::internal::GRAIN_SIZE || at::get_max_threads() == 1 || at::in_parallel_region() || !parallelize) {
+  else if (numel() < at::internal::GRAIN_SIZE || at::get_num_threads() == 1 ||
+      at::in_parallel_region() || !parallelize) {
     auto reduce_dims = num_reduce_dims();
 
     auto non_reduced_shape = shape.slice(reduce_dims, shape.size() - reduce_dims);
 
     int64_t non_reduced_numel = 1;
-    for (int i = 0; i < non_reduced_shape.size(); ++i) {
-      non_reduced_numel *= non_reduced_shape[i];
+    for (const auto i : non_reduced_shape) {
+      non_reduced_numel *= i;
     }
     DimCounter dims {non_reduced_shape, {0, non_reduced_numel}};
     while (!dims.is_done()) {
@@ -150,11 +158,11 @@ void TensorIterator::foreach_reduced_elt(const loop_subiter_t &loop, bool parall
         return;
       }
 
-      auto sub_iter = *this;
+      TensorIterator sub_iter(*this);
 
       sub_iter.narrow(dim, begin, end - begin);
       // On some broken setups, `#ifdef _OPENMP` is true,
-      // and `get_max_threads` returns > 1, but
+      // and `get_num_threads` returns > 1, but
       // `#pragma omp parallel` is ignored.
       // There is no API to check for this, so we need to explicitly
       // stop trying to parallelize if we've already gotten here.

@@ -32,11 +32,14 @@ bool LeakyReluGradientOp<float, CPUContext>::RunOnDevice() {
   return true;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(LeakyRelu, LeakyReluOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     LeakyReluGradient,
     LeakyReluGradientOp<float, CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(LeakyRelu)
     .NumInputs(1)
     .NumOutputs(1)
@@ -105,12 +108,14 @@ Y:
     .Input(0, "X", "Input tensor of data to be operated on.")
     .Output(0, "Y", "Output tensor, calculated as described above.");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(LeakyReluGradient)
     .NumInputs(2)
     .NumOutputs(1)
     .AllowInplace({{1, 0}})
     .Arg("alpha", "Coefficient of leakage")
-    .InheritOnnxSchema();
+    .InheritOnnxSchema()
+    .IdenticalTypeAndShapeOfInput(1);
 
 class GetLeakyReluGradient : public GradientMakerBase {
   using GradientMakerBase::GradientMakerBase;
@@ -123,6 +128,7 @@ class GetLeakyReluGradient : public GradientMakerBase {
   }
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(LeakyRelu, GetLeakyReluGradient);
 
 } // namespace caffe2

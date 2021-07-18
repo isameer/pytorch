@@ -3,8 +3,10 @@
 namespace caffe2 {
 namespace {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(IndexHash, IndexHashOp<CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(IndexHash)
     .NumInputs(1)
     .NumOutputs(1)
@@ -16,6 +18,7 @@ specified number. All input and output indices are enforced to be positive.
 )DOC")
     .Input(0, "Indices", "Input feature indices.")
     .Output(0, "HashedIndices", "Hashed feature indices.")
+    .AllowOneToOneInplace()
     .Arg("seed", "seed for the hash function")
     .Arg("modulo", "must be > 0, hashed ids will be modulo this number")
     .TensorInferenceFunction([](const OperatorDef& /* unused */,
@@ -26,7 +29,13 @@ specified number. All input and output indices are enforced to be positive.
       return out;
     });
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 SHOULD_NOT_DO_GRADIENT(IndexHash);
 
 } // namespace
 } // namespace caffe2
+
+C10_EXPORT_CAFFE2_OP_TO_C10_CPU(
+    IndexHash,
+    "_caffe2::IndexHash(Tensor indices, int seed, int modulo) -> Tensor hashed_indices",
+    caffe2::IndexHashOp<caffe2::CPUContext>);

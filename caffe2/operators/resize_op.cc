@@ -62,10 +62,8 @@ template <>
 bool ResizeNearestOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
   const auto& X = Input(0);
 
-  const int batch_size = X.dim32(0),
-            num_channels = X.dim32(1),
-            input_height = X.dim32(2),
-            input_width = X.dim32(3);
+  const int batch_size = X.dim32(0), num_channels = X.dim32(1),
+            input_height = X.dim32(2), input_width = X.dim32(3);
   if (InputSize() == 2) {
     const auto& scales = Input(1);
     CAFFE_ENFORCE_EQ(scales.dim(), 1);
@@ -75,7 +73,9 @@ bool ResizeNearestOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
     width_scale_ = scales_data[1];
   }
 
+  // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
   int output_width = input_width * width_scale_;
+  // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
   int output_height = input_height * height_scale_;
   auto* Y = Output(
       0,
@@ -95,8 +95,10 @@ bool ResizeNearestOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
   for (int n = 0; n < batch_size; ++n) {
     for (int c = 0; c < num_channels; ++c) {
       for (int y = 0; y < output_height; ++y) {
+        // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
         const int in_y = std::min((int)(y / height_scale_), (input_height - 1));
         for (int x = 0; x < output_width; ++x) {
+          // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
           const int in_x = std::min((int)(x / width_scale_), (input_width - 1));
           Ydata[output_width * y + x] = Xdata[input_width * in_y + in_x];
         }
@@ -124,7 +126,9 @@ bool ResizeNearestOp<float, CPUContext>::RunOnDeviceWithOrderNHWC() {
     width_scale_ = scales_data[1];
   }
 
+  // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
   int output_width = input_width * width_scale_;
+  // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
   int output_height = input_height * height_scale_;
 
   const int output_width_stride = output_width * num_channels;
@@ -140,8 +144,10 @@ bool ResizeNearestOp<float, CPUContext>::RunOnDeviceWithOrderNHWC() {
 
   for (int n = 0; n < batch_size; ++n) {
     for (int y = 0; y < output_height; ++y) {
+      // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
       const int in_y = std::min((int)(y / height_scale_), (input_height - 1));
       for (int x = 0; x < output_width; ++x) {
+        // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
         const int in_x = std::min((int)(x / width_scale_), (input_width - 1));
         std::memcpy(
             &Ydata[output_width_stride * y + num_channels * x],
@@ -175,10 +181,8 @@ bool ResizeNearestGradientOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
 
   const auto inputDims = dY.sizes();
   CAFFE_ENFORCE_EQ(4, inputDims.size());
-  const int batch_size = dY.dim32(0),
-            num_channels = dY.dim32(1),
-            input_height = dY.dim32(2),
-            input_width = dY.dim32(3);
+  const int batch_size = dY.dim32(0), num_channels = dY.dim32(1),
+            input_height = dY.dim32(2), input_width = dY.dim32(3);
   const int output_height = X.dim32(2);
   const int output_width = X.dim32(3);
   if (InputSize() == 3) {
@@ -202,11 +206,13 @@ bool ResizeNearestGradientOp<float, CPUContext>::RunOnDeviceWithOrderNCHW() {
   for (int n = 0; n < batch_size; ++n) {
     for (int c = 0; c < num_channels; ++c) {
       for (int y = 0; y < input_height; ++y) {
-        const int out_y = std::min((int)(y / height_scale_),
-                                   (output_height - 1));
+        const int out_y =
+            // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
+            std::min((int)(y / height_scale_), (output_height - 1));
         for (int x = 0; x < input_width; ++x) {
-          const int out_x = std::min((int)(x / width_scale_),
-                                     (output_width - 1));
+          const int out_x =
+              // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
+              std::min((int)(x / width_scale_), (output_width - 1));
           dXdata[output_width * out_y + out_x] += dYdata[input_width * y + x];
         }
       }
@@ -252,8 +258,10 @@ bool ResizeNearestGradientOp<float, CPUContext>::RunOnDeviceWithOrderNHWC() {
 
   for (int n = 0; n < batch_size; ++n) {
     for (int y = 0; y < input_height; ++y) {
+      // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
       const int out_y = std::min((int)(y / height_scale_), (output_height - 1));
       for (int x = 0; x < input_width; ++x) {
+        // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
         const int out_x = std::min((int)(x / width_scale_), (output_width - 1));
 
         float* dXdata_c0 =
@@ -284,18 +292,22 @@ bool ResizeNearestGradientOp<float, CPUContext>::RunOnDevice() {
       CAFFE_THROW("Unknown Storage order: ", order_);
   }
 }
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(ResizeNearest, ResizeNearestOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_GRADIENT_OPERATOR(
     ResizeNearestGradient,
     ResizeNearestGradientOp<float, CPUContext>);
 
 #ifdef CAFFE2_USE_MKLDNN
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_IDEEP_OPERATOR(
     ResizeNearest,
     IDEEPFallbackOp<ResizeNearestOp<float, CPUContext>>);
 #endif
 
 // Input: X, output: Y
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(ResizeNearest)
     .NumInputs(1, 2)
     .NumOutputs(1)
@@ -317,6 +329,7 @@ output_height = floor(output_height * height_scale)
     .InheritOnnxSchema("Upsample");
 
 // Input: dY, output: dX
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 GRADIENT_OPERATOR_SCHEMA(ResizeNearestGradient)
     .NumInputs(2, 3)
     .NumOutputs(1)
@@ -335,12 +348,29 @@ class GetResizeNearestGradient : public GradientMakerBase {
           vector<string>{GO(0), I(0), I(1)},
           vector<string>{GI(0)});
     }
-    return SingleGradientDef("ResizeNearestGradient",
-                             "",
-                             vector<string>{GO(0), I(0)},
-                             vector<string>{GI(0)});
+    return SingleGradientDef(
+        "ResizeNearestGradient",
+        "",
+        vector<string>{GO(0), I(0)},
+        vector<string>{GI(0)});
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(ResizeNearest, GetResizeNearestGradient);
 
 } // namespace caffe2
+
+using ResizeNearestOpFloatCPU =
+    caffe2::ResizeNearestOp<float, caffe2::CPUContext>;
+
+// clang-format off
+C10_EXPORT_CAFFE2_OP_TO_C10_CPU(
+    ResizeNearest,
+    "_caffe2::ResizeNearest("
+      "Tensor X, "
+      "str order, "
+      "float width_scale, "
+      "float height_scale"
+    ") -> (Tensor Y)",
+    ResizeNearestOpFloatCPU);
+// clang-format on

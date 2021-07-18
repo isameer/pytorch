@@ -4,6 +4,7 @@
 
 #include <sstream>
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_string(
     caffe2_task_graph_engine,
     "futures",
@@ -19,7 +20,7 @@ ParallelNet::ParallelNet(
   CAFFE_ENFORCE_GT(
       num_workers_, 0, "Expected positive number of worker threads");
 
-  helper_ = caffe2::make_unique<ParallelNetExecutorHelper>(this);
+  helper_ = std::make_unique<ParallelNetExecutorHelper>(this);
 
   // initialize operators
   operator_nodes_ = dag_utils::prepareOperatorNodes(net_def, ws);
@@ -61,7 +62,7 @@ ParallelNet::ParallelNet(
   }
 
   // initialize task graph
-  for (auto chain_id = 0; chain_id < chains.size(); ++chain_id) {
+  for (auto chain_id = 0U; chain_id < chains.size(); ++chain_id) {
     std::vector<OperatorBase*> ops;
     ops.reserve(chains[chain_id].size());
     for (auto op_id : chains[chain_id]) {
@@ -69,7 +70,7 @@ ParallelNet::ParallelNet(
     }
     CAFFE_ENFORCE(task_graph_->CreateNode(chain_id, ops));
   }
-  for (auto chain_id = 0; chain_id < chain_nodes.size(); ++chain_id) {
+  for (auto chain_id = 0U; chain_id < chain_nodes.size(); ++chain_id) {
     if (!chain_nodes[chain_id].parents_.empty()) {
       CAFFE_ENFORCE(
           task_graph_->AddDependency(chain_id, chain_nodes[chain_id].parents_));
@@ -186,14 +187,17 @@ std::shared_ptr<AsyncTaskGraphBase> GetAsyncTaskGraph(
   return std::make_shared<AsyncTaskGraph>(helper, options);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_DEFINE_SHARED_REGISTRY(
     TaskGraphRegistry,
     AsyncTaskGraphBase,
     ExecutorHelper*,
     const ExecutionOptions&);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 C10_REGISTER_CREATOR(TaskGraphRegistry, futures, GetAsyncTaskGraph);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_NET(parallel, ParallelNet);
 
 } // namespace caffe2

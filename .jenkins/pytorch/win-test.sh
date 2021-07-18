@@ -1,170 +1,117 @@
-#!/bin/bash -e
+#!/bin/bash
+set -ex
+# shellcheck disable=SC2034
+COMPACT_JOB_NAME=pytorch-win-ws2019-cuda10-cudnn7-py3-test
 
-COMPACT_JOB_NAME=pytorch-win-ws2016-cuda9-cudnn7-py3-test
-source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+SCRIPT_PARENT_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+# shellcheck source=./common.sh
+source "$SCRIPT_PARENT_DIR/common.sh"
 
+IMAGE_COMMIT_ID=$(git rev-parse HEAD)
+export IMAGE_COMMIT_ID
 export IMAGE_COMMIT_TAG=${BUILD_ENVIRONMENT}-${IMAGE_COMMIT_ID}
 if [[ ${JOB_NAME} == *"develop"* ]]; then
   export IMAGE_COMMIT_TAG=develop-${IMAGE_COMMIT_TAG}
 fi
 
 export TMP_DIR="${PWD}/build/win_tmp"
-export TMP_DIR_WIN=$(cygpath -w "${TMP_DIR}")
-mkdir -p $TMP_DIR/ci_scripts/
-mkdir -p $TMP_DIR/build/torch
+TMP_DIR_WIN=$(cygpath -w "${TMP_DIR}")
+export TMP_DIR_WIN
+export PROJECT_DIR="${PWD}"
+PROJECT_DIR_WIN=$(cygpath -w "${PROJECT_DIR}")
+export PROJECT_DIR_WIN
+export TEST_DIR="${PWD}/test"
+TEST_DIR_WIN=$(cygpath -w "${TEST_DIR}")
+export TEST_DIR_WIN
+export PYTORCH_FINAL_PACKAGE_DIR="${PYTORCH_FINAL_PACKAGE_DIR:-/c/users/circleci/workspace/build-results}"
+PYTORCH_FINAL_PACKAGE_DIR_WIN=$(cygpath -w "${PYTORCH_FINAL_PACKAGE_DIR}")
+export PYTORCH_FINAL_PACKAGE_DIR_WIN
+export PYTORCH_TEST_SKIP_NOARCH=1
 
-cat >$TMP_DIR/ci_scripts/download_image.py << EOL
+mkdir -p "$TMP_DIR"/build/torch
 
-import os
-import sys
-import boto3
-import botocore
 
-IMAGE_COMMIT_TAG = os.getenv('IMAGE_COMMIT_TAG')
+# This directory is used only to hold "pytorch_env_restore.bat", called via "setup_pytorch_env.bat"
+CI_SCRIPTS_DIR=$TMP_DIR/ci_scripts
+mkdir -p "$CI_SCRIPTS_DIR"
 
-session = boto3.session.Session()
-s3 = session.resource('s3')
-BUCKET_NAME = 'ossci-windows-build'
-KEY = 'pytorch/'+IMAGE_COMMIT_TAG+'.7z'
-LOCAL_FILE_PATH = sys.argv[1]
-try:
-    s3.Bucket(BUCKET_NAME).download_file(KEY, LOCAL_FILE_PATH)
-except botocore.exceptions.ClientError as e:
-    if e.response['Error']['Code'] == "404":
-        print("The object does not exist.")
-    else:
-        raise
+if [ -n "$(ls "$CI_SCRIPTS_DIR"/*)" ]; then
+    rm "$CI_SCRIPTS_DIR"/*
+fi
 
-EOL
 
-cat >$TMP_DIR/ci_scripts/setup_pytorch_env.bat <<EOL
+export SCRIPT_HELPERS_DIR=$SCRIPT_PARENT_DIR/win-test-helpers
 
-set PATH=C:\\Program Files\\CMake\\bin;C:\\Program Files\\7-Zip;C:\\ProgramData\\chocolatey\\bin;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Amazon\\AWSCLI;%PATH%
+# Try to pull value from CIRCLE_PULL_REQUEST
+# NOTE: file_diff_from_base is currently bugged for GHA due to an issue finding a merge base for ghstack PRs
+#       see https://github.com/pytorch/pytorch/issues/60111
+IN_PULL_REQUEST=${CIRCLE_PULL_REQUEST:-}
+if [ -n "$IN_PULL_REQUEST" ]; then
+  DETERMINE_FROM="${TMP_DIR}/determine_from"
+  file_diff_from_base "$DETERMINE_FROM"
+fi
 
-:: Install Miniconda3
-if "%BUILD_ENVIRONMENT%"=="" (
-    set CONDA_PARENT_DIR=%CD%
-) else (
-    set CONDA_PARENT_DIR=C:\\Jenkins
-)
-if NOT "%BUILD_ENVIRONMENT%"=="" (
-    IF EXIST %CONDA_PARENT_DIR%\\Miniconda3 ( rd /s /q %CONDA_PARENT_DIR%\\Miniconda3 )
-    curl https://repo.continuum.io/miniconda/Miniconda3-latest-Windows-x86_64.exe --output %TMP_DIR_WIN%\\Miniconda3-latest-Windows-x86_64.exe
-    %TMP_DIR_WIN%\\Miniconda3-latest-Windows-x86_64.exe /InstallationType=JustMe /RegisterPython=0 /S /AddToPath=0 /D=%CONDA_PARENT_DIR%\\Miniconda3
-)
-call %CONDA_PARENT_DIR%\\Miniconda3\\Scripts\\activate.bat %CONDA_PARENT_DIR%\\Miniconda3
-if NOT "%BUILD_ENVIRONMENT%"=="" (
-    :: We have to pin Python version to 3.6.7, until mkl supports Python 3.7
-    call conda install -y -q python=3.6.7 numpy mkl cffi pyyaml boto3 protobuf numba
-)
-pip install -q ninja future hypothesis "librosa>=0.6.2" psutil
-
-set WORKING_DIR=%CD%
-call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_amd64
-cd %WORKING_DIR%
-
-set PATH=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0\\bin;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0\\libnvvp;%PATH%
-set CUDA_PATH=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0
-set CUDA_PATH_V9_0=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0
-set NVTOOLSEXT_PATH=C:\\Program Files\\NVIDIA Corporation\\NvToolsExt
-set CUDNN_LIB_DIR=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0\\lib\\x64
-set CUDA_TOOLKIT_ROOT_DIR=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0
-set CUDNN_ROOT_DIR=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0
-set PYTHONPATH=%TMP_DIR_WIN%\\build;%PYTHONPATH%
-set NUMBAPRO_CUDALIB=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0\\bin
-set NUMBAPRO_LIBDEVICE=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0\\nvvm\\libdevice
-set NUMBAPRO_NVVM=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v9.0\nvvm\\bin\\nvvm64_32_0.dll
-
-if NOT "%BUILD_ENVIRONMENT%"=="" (
-    cd %TMP_DIR_WIN%\\build
-    python %TMP_DIR_WIN%\\ci_scripts\\download_image.py %TMP_DIR_WIN%\\%IMAGE_COMMIT_TAG%.7z
-    :: 7z: -aos skips if exists because this .bat can be called multiple times
-    7z x %TMP_DIR_WIN%\\%IMAGE_COMMIT_TAG%.7z -aos
-    cd %WORKING_DIR%
-) else (
-    xcopy /s %CONDA_PARENT_DIR%\\Miniconda3\\Lib\\site-packages\\torch %TMP_DIR_WIN%\\build\\torch\\
-)
-
-EOL
-
-cat >$TMP_DIR/ci_scripts/test_python_nn.bat <<EOL
-call %TMP_DIR%/ci_scripts/setup_pytorch_env.bat
-:: Some smoke tests
-cd test/
-:: Checking that caffe2.python is available
-python -c "from caffe2.python import core"
-if ERRORLEVEL 1 exit /b 1
-:: Checking that MKL is available
-python -c "import torch; exit(0 if torch.backends.mkl.is_available() else 1)"
-if ERRORLEVEL 1 exit /b 1
-:: Checking that CUDA archs are setup correctly
-python -c "import torch; torch.randn([3,5]).cuda()"
-if ERRORLEVEL 1 exit /b 1
-:: Checking that magma is available
-python -c "import torch; torch.rand(1).cuda(); exit(0 if torch.cuda.has_magma else 1)"
-if ERRORLEVEL 1 exit /b 1
-:: Checking that CuDNN is available
-python -c "import torch; exit(0 if torch.backends.cudnn.is_available() else 1)"
-if ERRORLEVEL 1 exit /b 1
-cd ..
-
-:: Run nn tests
-cd test/ && python run_test.py --include nn --verbose && cd ..
-EOL
-
-cat >$TMP_DIR/ci_scripts/test_python_all_except_nn.bat <<EOL
-call %TMP_DIR%/ci_scripts/setup_pytorch_env.bat
-cd test/ && python run_test.py --exclude nn --verbose && cd ..
-EOL
-
-cat >$TMP_DIR/ci_scripts/test_custom_script_ops.bat <<EOL
-call %TMP_DIR%/ci_scripts/setup_pytorch_env.bat
-
-cd test/custom_operator
-
-:: Build the custom operator library.
-mkdir build
-cd build
-:: Note: Caffe2 does not support MSVC + CUDA + Debug mode (has to be Release mode)
-cmake -DCMAKE_PREFIX_PATH=%TMP_DIR_WIN%\\build\\torch -DCMAKE_BUILD_TYPE=Release -GNinja ..
-ninja -v
-cd ..
-
-:: Run tests Python-side and export a script module.
-python test_custom_ops.py -v
-python model.py --export-script-module="build/model.pt"
-:: Run tests C++-side and load the exported script module.
-cd build
-set PATH=C:\\Program Files\\NVIDIA Corporation\\NvToolsExt/bin/x64;%TMP_DIR_WIN%\\build\\torch\\lib;%PATH%
-test_custom_ops.exe model.pt
-EOL
-
-cat >$TMP_DIR/ci_scripts/test_libtorch.bat <<EOL
-call %TMP_DIR%/ci_scripts/setup_pytorch_env.bat
-dir
-dir %TMP_DIR_WIN%\\build
-dir %TMP_DIR_WIN%\\build\\torch
-dir %TMP_DIR_WIN%\\build\\torch\\lib
-cd %TMP_DIR_WIN%\\build\\torch\\lib
-set PATH=C:\\Program Files\\NVIDIA Corporation\\NvToolsExt/bin/x64;%TMP_DIR_WIN%\\build\\torch\\lib;%PATH%
-test_api.exe --gtest_filter="-IntegrationTest.MNIST*"
-EOL
+if [[ "${BUILD_ENVIRONMENT}" == *cuda11* ]]; then
+  export BUILD_SPLIT_CUDA=ON
+fi
 
 run_tests() {
-    if [ -z "${JOB_BASE_NAME}" ] || [[ "${JOB_BASE_NAME}" == *-test ]]; then
-        $TMP_DIR/ci_scripts/test_python_nn.bat && \
-        $TMP_DIR/ci_scripts/test_python_all_except_nn.bat && \
-        $TMP_DIR/ci_scripts/test_custom_script_ops.bat && \
-        $TMP_DIR/ci_scripts/test_libtorch.bat
+    # Run nvidia-smi if available
+    for path in '/c/Program Files/NVIDIA Corporation/NVSMI/nvidia-smi.exe' /c/Windows/System32/nvidia-smi.exe; do
+        if [[ -x "$path" ]]; then
+            "$path" || echo "true";
+            break
+        fi
+    done
+
+    if [[ ( -z "${JOB_BASE_NAME}" || "${JOB_BASE_NAME}" == *-test ) && $NUM_TEST_SHARDS -eq 1 ]]; then
+        "$SCRIPT_HELPERS_DIR"/test_python.bat "$DETERMINE_FROM"
+
+        if [[ -z ${RUN_SMOKE_TESTS_ONLY} ]]; then
+          "$SCRIPT_HELPERS_DIR"/test_custom_script_ops.bat
+          "$SCRIPT_HELPERS_DIR"/test_custom_backend.bat
+          "$SCRIPT_HELPERS_DIR"/test_libtorch.bat
+        fi
     else
-        if [[ "${JOB_BASE_NAME}" == *-test1 ]]; then
-            $TMP_DIR/ci_scripts/test_python_nn.bat
-        elif [[ "${JOB_BASE_NAME}" == *-test2 ]]; then
-            $TMP_DIR/ci_scripts/test_python_all_except_nn.bat && \
-            $TMP_DIR/ci_scripts/test_custom_script_ops.bat && \
-            $TMP_DIR/ci_scripts/test_libtorch.bat
+        if [[ "${BUILD_ENVIRONMENT}" == "pytorch-win-vs2019-cpu-py3" ]]; then
+          export PYTORCH_COLLECT_COVERAGE=1
+          export COVERAGE_RCFILE=$PWD/.coveragerc # coverage config file needed for plug-ins and settings to work
+        fi
+        if [[ "${JOB_BASE_NAME}" == *-test1 || "${SHARD_NUMBER}" == 1 ]]; then
+            "$SCRIPT_HELPERS_DIR"/test_python_first_shard.bat "$DETERMINE_FROM"
+
+            if [[ -z ${RUN_SMOKE_TESTS_ONLY} ]]; then
+              "$SCRIPT_HELPERS_DIR"/test_libtorch.bat
+              if [[ "${USE_CUDA}" == "1" ]]; then
+                "$SCRIPT_HELPERS_DIR"/test_python_jit_legacy.bat "$DETERMINE_FROM"
+              fi
+            fi
+
+        elif [[ "${JOB_BASE_NAME}" == *-test2 || "${SHARD_NUMBER}" == 2 ]]; then
+            "$SCRIPT_HELPERS_DIR"/test_python_second_shard.bat "$DETERMINE_FROM"
+
+            if [[ -z ${RUN_SMOKE_TESTS_ONLY} ]]; then
+              "$SCRIPT_HELPERS_DIR"/test_custom_backend.bat
+              "$SCRIPT_HELPERS_DIR"/test_custom_script_ops.bat
+            fi
         fi
     fi
 }
 
-run_tests && assert_git_not_dirty && echo "TEST PASSED"
+run_tests
+assert_git_not_dirty
+echo "TEST PASSED"
+
+if [[ "${BUILD_ENVIRONMENT}" == "pytorch-win-vs2019-cpu-py3" ]]; then
+  pushd "$TEST_DIR"
+  python -mpip install coverage==5.5
+  python -mpip install -e "$PROJECT_DIR/tools/coverage_plugins_package"
+  echo "Generating XML coverage report"
+  time python -mcoverage xml
+  popd
+
+  pushd "$PROJECT_DIR"
+  python -mpip install codecov
+  python -mcodecov
+  popd
+fi

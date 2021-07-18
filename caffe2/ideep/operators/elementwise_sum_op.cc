@@ -3,7 +3,9 @@
 #include "caffe2/operators/utility_ops.h"
 #include "caffe2/operators/elementwise_add_op.h"
 
-namespace caffe2 {
+using namespace caffe2;
+
+namespace {
 
 class IDEEPSumOp final : public IDEEPOperator {
  public:
@@ -17,6 +19,7 @@ class IDEEPSumOp final : public IDEEPOperator {
       : IDEEPOperator(operator_def, ws),
         fallback_sum_(operator_def, ws),
         fallback_add_(operator_def, ws) {}
+  // NOLINTNEXTLINE(modernize-use-equals-default)
   ~IDEEPSumOp() override {}
 
   bool RunOnDevice() override {
@@ -73,7 +76,9 @@ class IDEEPSumOp final : public IDEEPOperator {
   OUTPUT_TAGS(OUTPUT);
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_IDEEP_OPERATOR(Sum, IDEEPSumOp);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_IDEEP_OPERATOR(Add, IDEEPSumOp);
 
-} // namespace caffe2
+} // namespace

@@ -3,74 +3,10 @@
 
 #include <THC/THCAsmUtils.cuh>
 #include <THC/THCDeviceUtils.cuh>
-
-#if defined(__HIP_PLATFORM_HCC__)
-#define SCAN_UTILS_WARP_SIZE 64
-#else
-#define SCAN_UTILS_WARP_SIZE 32
-#endif
+#include <c10/macros/Macros.h>
 
 // Collection of in-kernel scan / prefix sum utilities
 
-// Inclusive Scan via an upsweep/downsweep mechanism. Assumes:
-//
-// 1. Power2ScanSize is a power of 2. This code still works for collections that
-// do not exactly contain a power of 2 number of elements, simply round up to the
-// nearest power of 2 and then call.
-//
-// 2. That there are two-elements per thread, i.e. the size of the smem storage
-// is 2 * blockDim.x * sizeof(T).
-//
-// Consider a (+)-Scan on the following elements:
-//
-// Upsweep:
-//
-//    0  1  2  3  4  5  6  7
-//       1     5     9    13
-//             6          22
-//                        28
-//
-// Downsweep:
-//                  15
-//         3     10    21
-template <typename T, class BinaryOp, int Power2ScanSize>
-__device__ void inclusivePrefixScan(T *smem, BinaryOp binop) {
-  // Reduce step ("upsweep")
-#pragma unroll
-  for (int stride = 1; stride < Power2ScanSize; stride <<= 1) {
-    int index = (threadIdx.x + 1) * stride * 2 - 1;
-    if (index < Power2ScanSize) {
-      smem[index] = binop(smem[index], smem[index - stride]);
-    }
-    __syncthreads();
-  }
-
-  // Post-reduce step ("downsweep")
-#pragma unroll
-  for (int stride = Power2ScanSize / 4; stride > 0; stride >>= 1) {
-    int index = (threadIdx.x + 1) * stride * 2 - 1;
-    if ((index + stride) < Power2ScanSize) {
-      smem[index + stride] = binop(smem[index + stride], smem[index]);
-    }
-    __syncthreads();
-  }
-}
-
-// Generic Op that can be used to support segmented scans by re-using
-// the basic inclusiveScanOp. Merely requires that the input data has both
-// a flag and val component
-template <typename T, class BinaryOp>
-struct SegmentedScanOp {
-  __host__ __device__ SegmentedScanOp(BinaryOp binop): _binop(binop) {}
-  __host__ __device__ inline T operator()(const T& a, const T& b) {
-    T c;
-    c.val = a.flag ? a.val : _binop(a.val, b.val);
-    c.flag = a.flag | b.flag;
-    return c;
-  }
-
-  BinaryOp _binop;
-};
 
 // Extends the above Inclusive Scan to support segments. It has the same properties
 // but also takes a flag array that indicates the starts of "segments", i.e. individual
@@ -169,7 +105,7 @@ __device__ void inclusiveBinaryPrefixScan(T* smem, bool in, T* out, BinaryFuncti
   T carry = __popc(vote);
 #endif
 
-  int warp = threadIdx.x / SCAN_UTILS_WARP_SIZE;
+  int warp = threadIdx.x / C10_WARP_SIZE;
 
   // Per each warp, write out a value
   if (getLaneId() == 0) {
@@ -182,7 +118,7 @@ __device__ void inclusiveBinaryPrefixScan(T* smem, bool in, T* out, BinaryFuncti
   // warp shuffle scan for CC 3.0+
   if (threadIdx.x == 0) {
     int current = 0;
-    for (int i = 0; i < blockDim.x / SCAN_UTILS_WARP_SIZE; ++i) {
+    for (int i = 0; i < blockDim.x / C10_WARP_SIZE; ++i) {
       T v = smem[i];
       smem[i] = binop(smem[i], current);
       current = binop(current, v);
@@ -213,13 +149,11 @@ __device__ void exclusiveBinaryPrefixScan(T* smem, bool in, T* out, T* carry, Bi
   *out -= (T) in;
 
   // The outgoing carry for all threads is the last warp's sum
-  *carry = smem[THCCeilDiv<int>(blockDim.x, SCAN_UTILS_WARP_SIZE) - 1];
+  *carry = smem[THCCeilDiv<int>(blockDim.x, C10_WARP_SIZE) - 1];
 
   if (KillWARDependency) {
     __syncthreads();
   }
 }
-
-#undef SCAN_UTILS_WARP_SIZE
 
 #endif // THC_SCAN_UTILS_INC

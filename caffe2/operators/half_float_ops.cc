@@ -1,7 +1,34 @@
 #include "caffe2/operators/half_float_ops.h"
 #include <c10/util/Half.h>
+#include "caffe2/utils/cpuid.h"
+#ifdef USE_FBGEMM
+#include "fbgemm/FbgemmConvert.h"
+#endif
 
 namespace caffe2 {
+
+inline void FloatToFloat16_ref(
+    const float* in,
+    at::Half* out,
+    size_t N,
+    bool do_clip = false) {
+  if (do_clip) {
+    constexpr float FP16_MAX = 65504.f;
+    for (size_t i = 0; i < N; ++i) {
+      out[i] = std::max(-FP16_MAX, std::min(in[i], FP16_MAX));
+    }
+  } else {
+    for (size_t i = 0; i < N; ++i) {
+      out[i] = in[i];
+    }
+  }
+}
+
+inline void Float16ToFloat_ref(const at::Half* in, float* out, size_t N) {
+  for (size_t i = 0; i < N; ++i) {
+    out[i] = in[i];
+  }
+}
 
 template <>
 bool FloatToHalfOp<CPUContext>::RunOnDevice() {
@@ -12,9 +39,20 @@ bool FloatToHalfOp<CPUContext>::RunOnDevice() {
   at::Half* out = output->template mutable_data<at::Half>();
   auto N = input.numel();
 
-  for (size_t i = 0; i < N; i++) {
-    out[i] = data[i];
+#ifdef USE_FBGEMM
+  // There exists a verion fbgemm::FloatToFloat16_simd which will issue avx-512
+  // instructions when possible. However, this actually doesn't give perf
+  // benefits, according to benchmarks on T1/T6. Hence we stick to avx2 versions
+  // here.
+  if (GetCpuId().avx2()) {
+    fbgemm::FloatToFloat16_avx2(
+        data, reinterpret_cast<fbgemm::float16*>(out), N, clip_);
+  } else {
+    FloatToFloat16_ref(data, out, N, clip_);
   }
+#else
+  FloatToFloat16_ref(data, out, N, clip_);
+#endif
 
   return true;
 }
@@ -28,15 +66,27 @@ bool HalfToFloatOp<CPUContext>::RunOnDevice() {
   float* out = output->template mutable_data<float>();
   auto N = input.numel();
 
-  for (size_t i = 0; i < N; i++) {
-    out[i] = data[i];
+#ifdef USE_FBGEMM
+  // Same reasoning of sticking to avx2
+  if (GetCpuId().avx2()) {
+    fbgemm::Float16ToFloat_avx2(
+        reinterpret_cast<const fbgemm::float16*>(data), out, N);
+  } else {
+    Float16ToFloat_ref(data, out, N);
   }
+#else
+  Float16ToFloat_ref(data, out, N);
+#endif
+
   return true;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(FloatToHalf, FloatToHalfOp<CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(HalfToFloat, HalfToFloatOp<CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(FloatToHalf)
     .NumInputs(1)
     .NumOutputs(1)
@@ -50,6 +100,7 @@ OPERATOR_SCHEMA(FloatToHalf)
       return out;
     });
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(HalfToFloat)
     .NumInputs(1)
     .NumOutputs(1)
@@ -76,19 +127,23 @@ bool Float16ConstantFillOp::RunOnDevice() {
   return true;
 }
 
-bool Float16UniformFillOp::RunOnDevice() {
+template <>
+bool Float16UniformFillOp<CPUContext>::RunOnDevice() {
   auto* output = Output(0, shape_, at::dtype<at::Half>());
   at::Half* out = output->template mutable_data<at::Half>();
 
   // Get a batch row by row and convert
   auto leading_dim_sz = output->size(0);
+  // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
   int rowsz = output->numel() / output->size(0);
 
   vector<float> intermediate_data_;
   intermediate_data_.resize(rowsz);
+  // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
   for (uint64_t i = 0; i < leading_dim_sz; i++) {
     math::RandUniform<float, CPUContext>(
         rowsz, min_, max_, intermediate_data_.data(), &context_);
+    // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
     for (uint64_t j = 0; j < rowsz; j++) {
       out[i * rowsz + j] = intermediate_data_[j];
     }
@@ -96,8 +151,11 @@ bool Float16UniformFillOp::RunOnDevice() {
   return true;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(Float16ConstantFill, Float16ConstantFillOp);
-REGISTER_CPU_OPERATOR(Float16UniformFill, Float16UniformFillOp);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+REGISTER_CPU_OPERATOR(Float16UniformFill, Float16UniformFillOp<CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(Float16UniformFill)
     .NumInputs(0)
     .NumOutputs(1)
@@ -108,8 +166,10 @@ OPERATOR_SCHEMA(Float16UniformFill)
     .Arg("shape", "Shape of the tensor")
     .Arg("min", "Minimim value to generate")
     .Arg("max", "Maximum value to generate");
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 NO_GRADIENT(Float16UniformFill);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(Float16ConstantFill)
     .NumInputs(0)
     .NumOutputs(1)
@@ -128,6 +188,7 @@ class GetFloatToHalfGradient : public GradientMakerBase {
         "HalfToFloat", "", vector<string>{GO(0)}, vector<string>{GI(0)});
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(FloatToHalf, GetFloatToHalfGradient);
 
 class GetHalfToFloatGradient : public GradientMakerBase {
@@ -137,6 +198,8 @@ class GetHalfToFloatGradient : public GradientMakerBase {
         "FloatToHalf", "", vector<string>{GO(0)}, vector<string>{GI(0)});
   }
 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(HalfToFloat, GetHalfToFloatGradient);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 NO_GRADIENT(Float16ConstantFill);
 } // namespace caffe2

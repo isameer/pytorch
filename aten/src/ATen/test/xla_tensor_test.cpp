@@ -5,10 +5,12 @@
 using namespace at;
 
 void XLAFree(void *ptr) {
+  // NOLINTNEXTLINE(cppcoreguidelines-no-malloc)
   free(ptr);
 }
 
 void* XLAMalloc(ptrdiff_t size) {
+  // NOLINTNEXTLINE(cppcoreguidelines-no-malloc)
   return malloc(size);
 }
 
@@ -22,13 +24,13 @@ struct XLAAllocator final : public at::Allocator {
   }
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 TEST(XlaTensorTest, TestNoStorage) {
   XLAAllocator allocator;
-  auto storage = Storage(caffe2::TypeMeta::Make<float>(), 0, &allocator, true);
   auto tensor_impl = c10::make_intrusive<TensorImpl, UndefinedTensorImpl>(
-      std::move(storage),
-      XLATensorId(),
-      /*is_variable=*/false);
+      DispatchKey::XLA,
+      caffe2::TypeMeta::Make<float>(),
+      at::Device(DeviceType::XLA, 0));
   at::Tensor t(std::move(tensor_impl));
-  ASSERT_TRUE(t.device() == DeviceType::XLA);
+  ASSERT_TRUE(t.device() == at::Device(DeviceType::XLA, 0));
 }

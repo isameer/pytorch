@@ -27,6 +27,7 @@ class BooleanMaskLengthsOp final : public Operator<Context> {
     const auto* lengthsPtr = lengths.template data<T>();
     const auto* maskPtr = mask.template data<bool>();
     auto totalLength =
+        // NOLINTNEXTLINE(bugprone-fold-init-type)
         std::accumulate(lengthsPtr, lengthsPtr + lengths.numel(), 0);
     CAFFE_ENFORCE(mask.numel() == totalLength);
     auto* lengthsOut = Output(0, lengths.sizes(), at::dtype<T>());
@@ -90,6 +91,7 @@ bool BooleanMaskOp<CPUContext>::RunOnDevice() {
     if (lastStart != -1 && ((i >= outerSize) || !maskPtr[i])) {
       const auto* src = inPtr + lastStart * innerSizeBytes;
       auto* dst = outPtr + outStart * innerSizeBytes;
+      // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
       int numItems = i - lastStart;
       context_.CopyItemsSameDevice(
           data.dtype(), numItems * innerSize, src, dst);
@@ -110,9 +112,41 @@ bool BooleanMaskOp<CPUContext>::RunOnDevice() {
   return true;
 }
 
+template <>
+template <class T>
+bool BooleanMaskOpGradient<CPUContext>::DoRunWithType() {
+  const auto& mask = Input(0);
+  const auto& dY = Input(1);
+  auto* dX = Output(0);
+
+  const int data_length_before_mask = mask.size(0);
+
+  dX->Resize(data_length_before_mask);
+
+  // TODO: we should support any type, not just float
+  T* dXdata = dX->template mutable_data<T>();
+  const T* dYdata = dY.template data<T>();
+  const bool* mask_data = mask.template data<bool>();
+
+  int ind = 0;
+
+  for (int i = 0; i < data_length_before_mask; i++) {
+    dXdata[i] = mask_data[i] ? dYdata[ind++] : 0;
+  }
+
+  return true;
+}
+
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(BooleanMask, BooleanMaskOp<CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+REGISTER_CPU_GRADIENT_OPERATOR(
+    BooleanMaskGradient,
+    BooleanMaskOpGradient<CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(BooleanMaskLengths, BooleanMaskLengthsOp<CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(BooleanMask)
     .NumInputs(2)
     .NumOutputs(1, 2)
@@ -164,10 +198,20 @@ masked_indices: [0 3 4]
 
 )DOC")
     .Input(0, "data", "(*Tensor*): 1D input tensor")
-    .Input(1, "mask", "(*Tensor`<bool>`*): tensor of bools which determines the input elements that will be left in the `masked_data` output tensor; same shape as `data`")
-    .Output(0, "masked_data", "(*Tensor*): 1D tensor of same type as `data` input that contains the masked input tensor")
-    .Output(1, "masked_indices", "(*Tensor`<int>`*): 1D tensor of indices of the True elements in the `mask` tensor");
+    .Input(
+        1,
+        "mask",
+        "(*Tensor`<bool>`*): tensor of bools which determines the input elements that will be left in the `masked_data` output tensor; same shape as `data`")
+    .Output(
+        0,
+        "masked_data",
+        "(*Tensor*): 1D tensor of same type as `data` input that contains the masked input tensor")
+    .Output(
+        1,
+        "masked_indices",
+        "(*Tensor`<int>`*): 1D tensor of indices of the True elements in the `mask` tensor");
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(BooleanMaskLengths)
     .NumInputs(2)
     .NumOutputs(1)
@@ -218,21 +262,47 @@ masked_lengths: [0 2 2]
 </details>
 
 )DOC")
-    .Input(0, "lengths", "(*Tensor`<int>`*): input tensor containing segment lengths")
+    .Input(
+        0,
+        "lengths",
+        "(*Tensor`<int>`*): input tensor containing segment lengths")
     .Input(1, "mask", "(*Tensor`<bool>`*): A 1D bool tensor of values to keep.")
-    .Output(0, "masked_lengths", "(*Tensor`<int>`*): 1D tensor of same type as inputs that contains the sequence");
+    .Output(
+        0,
+        "masked_lengths",
+        "(*Tensor`<int>`*): 1D tensor of same type as inputs that contains the sequence");
 
-NO_GRADIENT(BooleanMask)
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+GRADIENT_OPERATOR_SCHEMA(BooleanMaskGradient).NumInputs(2).NumOutputs(1);
+
+namespace {
+class GetBooleanMaskGradient : public GradientMakerBase {
+  using GradientMakerBase::GradientMakerBase;
+  vector<OperatorDef> GetGradientDefs() override {
+    return SingleGradientDef(
+        "BooleanMaskGradient",
+        "",
+        vector<string>{I(1), GO(0)},
+        vector<string>{GI(0)});
+  }
+};
+
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+REGISTER_GRADIENT(BooleanMask, GetBooleanMaskGradient);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 NO_GRADIENT(BooleanMaskLengths);
 
+} // namespace
+
+// NOLINTNEXTLINE(clang-diagnostic-unused-const-variable)
 const float minf = -1.0f * std::numeric_limits<float>::infinity();
 
 // Template this on a functor object so we can generate different
 // implementations at compile time and have a better chance of inlining
 template <typename Functor>
 void MaskWithFunctor(
-    size_t N,
-    size_t M,
+    int N,
+    int M,
     int B,
     const float* in,
     Functor fn,
@@ -273,8 +343,8 @@ void MaskWithFunctor(
 // Repeat masking along continuous segments (right axes) of size D
 template <typename Functor>
 void RepeatedMaskWithFunctor(
-    size_t N,
-    size_t M,
+    int N,
+    int M,
     int D,
     const float* in,
     Functor fn,
@@ -297,6 +367,7 @@ class SequenceFunctor {
   explicit SequenceFunctor(const int* sl, const size_t len)
       : sl_(sl), len_(len) {}
   bool operator()(int i, int j, float /* val*/) {
+    // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
     CAFFE_ENFORCE(i < len_, "Out of bound.");
     return j >= sl_[i];
   }
@@ -391,6 +462,7 @@ bool SequenceMaskOp<CPUContext>::DoRunWithType() {
 
   // product of dims from 1 to batch
   const int batch_dim =
+      // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
       (canonical_batch >= 0
            ? input->size_to_dim(canonical_batch) * input->size(canonical_batch)
            : -1);
@@ -430,6 +502,7 @@ bool SequenceMaskOp<CPUContext>::DoRunWithType() {
         right,
         batch_dim,
         input->data<T>(),
+        // NOLINTNEXTLINE(clang-analyzer-core.CallAndMessage)
         WindowFunctor(window_centers->data<int>(), radius_),
         fill_val,
         output->template mutable_data<T>());
@@ -477,11 +550,19 @@ bool SequenceMaskOp<CPUContext>::DoRunWithType() {
   return true;
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(SequenceMask, SequenceMaskOp<CPUContext>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SequenceMask)
     .NumInputs(1, 2)
     .NumOutputs(1)
+    .TensorInferenceFunction([](const OperatorDef& def,
+                                const vector<TensorShape>& in) {
+      vector<TensorShape> out(1, in[0]);
+      out[0].set_data_type(in[0].data_type());
+      return out;
+    })
     .SetDoc(R"DOC(
 Mask op designed for use in attention mechanisms for sequence modeling tasks.
 Supports batching: given batch_dim, collapses dims 0 through batch_dim into a
@@ -567,6 +648,7 @@ class GetSequenceMaskGradient : public GradientMakerBase {
   }
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(SequenceMask, GetSequenceMaskGradient);
 
 } // namespace caffe2

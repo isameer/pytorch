@@ -1,16 +1,18 @@
-#include "spatial_softmax_with_loss_op.h"
-#include "softmax_shared.h"
+#include "caffe2/operators/spatial_softmax_with_loss_op.h"
 
 namespace caffe2 {
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     SpatialSoftmaxWithLoss,
     SpatialSoftmaxWithLossOp<float, CPUContext>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_CPU_OPERATOR(
     SpatialSoftmaxWithLossGradient,
     SpatialSoftmaxWithLossGradientOp<float, CPUContext>);
 
 // Input: X (logits), T (labels); Output: P (probs), Y
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SpatialSoftmaxWithLoss)
     .NumInputs(2, 3)
     .NumOutputs(2)
@@ -57,6 +59,7 @@ For spatial softmax, weighting is by x,y position of the input.
     .Output(1, "loss", "Average loss");
 
 // Input: X, T, P, dY; Output: dX
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 OPERATOR_SCHEMA(SpatialSoftmaxWithLossGradient).NumOutputs(1);
 
 #define DONT_CARE (-1)
@@ -66,6 +69,7 @@ bool SpatialSoftmaxWithLossOp<float, CPUContext>::RunOnDevice() {
   auto& X = Input(0); // Logits
   auto& T = Input(1); // Labels / targets
 
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   int N, D;
   N = X.dim32(0);
   D = X.dim32(1);
@@ -144,6 +148,7 @@ bool SpatialSoftmaxWithLossOp<float, CPUContext>::RunOnDevice() {
               " vs ",
               D);
           int idx = i * (H * W * D) + label * (H * W) + y * W + x;
+          // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
           float w = weights ? weights[label_idx] : 1.0;
           total_weight += w;
           sum_label_xent += -log(std::max(Pdata[idx], 1e-20f)) * w;
@@ -168,6 +173,7 @@ bool SpatialSoftmaxWithLossGradientOp<float, CPUContext>::RunOnDevice() {
   auto& d_avg_loss = Input(InputSize() - 1); // Gradient w.r.t. avg loss
 
   const float* weights = (InputSize() > 4 ? Input(2).data<float>() : nullptr);
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   int N, D;
   N = X.dim32(0);
   D = X.dim32(1);
@@ -198,6 +204,7 @@ bool SpatialSoftmaxWithLossGradientOp<float, CPUContext>::RunOnDevice() {
         if (label != DONT_CARE) {
           int idx = i * (H * W * D) + label * (H * W) + y * W + x;
 
+          // NOLINTNEXTLINE(bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions)
           dX_data[idx] = (dX_data[idx] - 1.0);
 
           if (weights != nullptr) {
@@ -258,6 +265,7 @@ class GetSoftmaxWithLossGradient : public GradientMakerBase {
   }
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_GRADIENT(SpatialSoftmaxWithLoss, GetSoftmaxWithLossGradient);
 }
 } // namespace caffe2

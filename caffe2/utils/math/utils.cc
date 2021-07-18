@@ -1,3 +1,5 @@
+#include <c10/util/accumulate.h>
+#include "caffe2/core/logging.h"
 #include "caffe2/utils/math/utils.h"
 
 #include <algorithm>
@@ -5,32 +7,42 @@
 #include <numeric>
 #include <vector>
 
-#include "caffe2/core/logging.h"
-
 namespace caffe2 {
 namespace math {
 namespace utils {
 
-void IncreaseIndexInDims(const int n, const int* dims, int* index) {
-  for (int i = n - 1; i >= 0; --i) {
-    ++index[i];
-    if (index[i] >= dims[i]) {
-      index[i] -= dims[i];
-    } else {
-      break;
-    }
+#define CAFFE2_SPECIALIZED_INCREASE_INDEX_IN_DIMS(TIndex)  \
+  template <>                                              \
+  C10_EXPORT void IncreaseIndexInDims<TIndex>(             \
+      const int ndim, const TIndex* dims, TIndex* index) { \
+    for (int i = ndim - 1; i >= 0; --i) {                  \
+      ++index[i];                                          \
+      if (index[i] >= dims[i]) {                           \
+        index[i] -= dims[i];                               \
+      } else {                                             \
+        break;                                             \
+      }                                                    \
+    }                                                      \
   }
-}
+CAFFE2_SPECIALIZED_INCREASE_INDEX_IN_DIMS(std::int32_t)
+CAFFE2_SPECIALIZED_INCREASE_INDEX_IN_DIMS(std::int64_t)
+#undef CAFFE2_SPECIALIZED_INCREASE_INDEX_IN_DIMS
 
-int GetIndexFromDims(const int n, const int* dims, const int* index) {
-  int sum = 0;
-  for (int i = 0; i < n; ++i) {
-    if (dims[i] > 1) {
-      sum = sum * dims[i] + index[i];
-    }
+#define CAFFE2_SPECIALIZED_GET_INDEX_FROM_DIMS(TIndex)        \
+  template <>                                                 \
+  C10_EXPORT TIndex GetIndexFromDims(                         \
+      const int n, const TIndex* dims, const TIndex* index) { \
+    TIndex sum = 0;                                           \
+    for (int i = 0; i < n; ++i) {                             \
+      if (dims[i] > 1) {                                      \
+        sum = sum * dims[i] + index[i];                       \
+      }                                                       \
+    }                                                         \
+    return sum;                                               \
   }
-  return sum;
-}
+CAFFE2_SPECIALIZED_GET_INDEX_FROM_DIMS(std::int32_t)
+CAFFE2_SPECIALIZED_GET_INDEX_FROM_DIMS(std::int64_t)
+#undef CAFFE2_SPECIALIZED_GET_INDEX_FROM_DIMS
 
 bool IsIdentityPermutation(const int n, const int* perm) {
   for (int i = 0; i < n; ++i) {
@@ -119,30 +131,36 @@ bool IsBothEndsReduce(
   return true;
 }
 
-void ComputeBroadcastBinaryOpDims(
-    const int A_ndim,
-    const int* A_dims,
-    const int B_ndim,
-    const int* B_dims,
-    int* A_broadcast_dims,
-    int* B_broadcast_dims,
-    int* C_broadcast_dims) {
-  const int ndim = std::max(A_ndim, B_ndim);
-  std::fill(A_broadcast_dims, A_broadcast_dims + ndim - A_ndim, 1);
-  std::fill(B_broadcast_dims, B_broadcast_dims + ndim - B_ndim, 1);
-  std::copy(A_dims, A_dims + A_ndim, A_broadcast_dims + ndim - A_ndim);
-  std::copy(B_dims, B_dims + B_ndim, B_broadcast_dims + ndim - B_ndim);
-  for (int i = 0; i < ndim; ++i) {
-    CAFFE_ENFORCE(
-        A_broadcast_dims[i] == B_broadcast_dims[i] ||
-        A_broadcast_dims[i] <= 1 || B_broadcast_dims[i] <= 1);
-    if (A_broadcast_dims[i] == 0 || B_broadcast_dims[i] == 0) {
-      C_broadcast_dims[i] = 0;
-    } else {
-      C_broadcast_dims[i] = std::max(A_broadcast_dims[i], B_broadcast_dims[i]);
-    }
+#define CAFFE2_SPECIALIZED_COMPUTE_BROADCAST_BINARY_OP_DIMS(TIndex)       \
+  template <>                                                             \
+  C10_EXPORT void ComputeBroadcastBinaryOpDims(                           \
+      const int A_ndim,                                                   \
+      const TIndex* A_dims,                                               \
+      const int B_ndim,                                                   \
+      const TIndex* B_dims,                                               \
+      TIndex* A_broadcast_dims,                                           \
+      TIndex* B_broadcast_dims,                                           \
+      TIndex* C_broadcast_dims) {                                         \
+    const int ndim = std::max(A_ndim, B_ndim);                            \
+    std::fill(A_broadcast_dims, A_broadcast_dims + ndim - A_ndim, 1);     \
+    std::fill(B_broadcast_dims, B_broadcast_dims + ndim - B_ndim, 1);     \
+    std::copy(A_dims, A_dims + A_ndim, A_broadcast_dims + ndim - A_ndim); \
+    std::copy(B_dims, B_dims + B_ndim, B_broadcast_dims + ndim - B_ndim); \
+    for (int i = 0; i < ndim; ++i) {                                      \
+      CAFFE_ENFORCE(                                                      \
+          A_broadcast_dims[i] == B_broadcast_dims[i] ||                   \
+          A_broadcast_dims[i] <= 1 || B_broadcast_dims[i] <= 1);          \
+      if (A_broadcast_dims[i] == 0 || B_broadcast_dims[i] == 0) {         \
+        C_broadcast_dims[i] = 0;                                          \
+      } else {                                                            \
+        C_broadcast_dims[i] =                                             \
+            std::max(A_broadcast_dims[i], B_broadcast_dims[i]);           \
+      }                                                                   \
+    }                                                                     \
   }
-}
+CAFFE2_SPECIALIZED_COMPUTE_BROADCAST_BINARY_OP_DIMS(std::int32_t)
+CAFFE2_SPECIALIZED_COMPUTE_BROADCAST_BINARY_OP_DIMS(std::int64_t)
+#undef CAFFE2_SPECIALIZED_COMPUTE_BROADCAST_BINARY_OP_DIMS
 
 bool IsRowwiseBroadcastBinaryOp(
     const int ndim,
@@ -165,12 +183,10 @@ bool IsRowwiseBroadcastBinaryOp(
   }
   const int pivot = std::max(A_pivot, B_pivot);
   if (A_pivot > B_pivot) {
-    *rows = std::accumulate(
-        B_dims + B_pivot, B_dims + pivot, 1, std::multiplies<int>());
+    *rows = c10::multiply_integers(B_dims + B_pivot, B_dims + pivot);
     *broadcast_1st = true;
   } else {
-    *rows = std::accumulate(
-        A_dims + A_pivot, A_dims + pivot, 1, std::multiplies<int>());
+    *rows = c10::multiply_integers(A_dims + A_pivot, A_dims + pivot);
     *broadcast_1st = false;
   }
   *cols = 1;
@@ -206,12 +222,10 @@ bool IsColwiseBroadcastBinaryOp(
   ++B_pivot;
   const int pivot = std::min(A_pivot, B_pivot);
   if (A_pivot < B_pivot) {
-    *cols = std::accumulate(
-        B_dims + pivot, B_dims + B_pivot, 1, std::multiplies<int>());
+    *cols = c10::multiply_integers(B_dims + pivot, B_dims + B_pivot);
     *broadcast_1st = true;
   } else {
-    *cols = std::accumulate(
-        A_dims + pivot, A_dims + A_pivot, 1, std::multiplies<int>());
+    *cols = c10::multiply_integers(A_dims + pivot, A_dims + A_pivot);
     *broadcast_1st = false;
   }
   *rows = 1;
@@ -253,16 +267,12 @@ bool IsBothEndsBroadcastBinaryOp(
     return false;
   }
   if (A_pre > B_pre && A_nxt < B_nxt) {
-    *pre = std::accumulate(
-        B_dims + B_pre, B_dims + A_pre, 1, std::multiplies<int>());
-    *nxt = std::accumulate(
-        B_dims + A_nxt, B_dims + B_nxt, 1, std::multiplies<int>());
+    *pre = c10::multiply_integers(B_dims + B_pre, B_dims + A_pre);
+    *nxt = c10::multiply_integers(B_dims + A_nxt, B_dims + B_nxt);
     *broadcast_1st = true;
   } else if (A_pre < B_pre && A_nxt > B_nxt) {
-    *pre = std::accumulate(
-        A_dims + A_pre, A_dims + B_pre, 1, std::multiplies<int>());
-    *nxt = std::accumulate(
-        A_dims + B_nxt, A_dims + A_nxt, 1, std::multiplies<int>());
+    *pre = c10::multiply_integers(A_dims + A_pre, A_dims + B_pre);
+    *nxt = c10::multiply_integers(A_dims + B_nxt, A_dims + A_nxt);
     *broadcast_1st = false;
   } else {
     return false;
@@ -314,6 +324,7 @@ void ComputeTransposeAxesForReduceOp(
     const int ndim,
     const int* dims,
     int* axes) {
+  // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
   const int d = ndim - std::count(dims, dims + ndim, 1);
   int p = 0;
   int q = d;
@@ -326,21 +337,23 @@ void ComputeTransposeAxesForReduceOp(
   }
 }
 
-void ComputeTransposedStrides(
-    const int ndim,
-    const int* dims,
-    const int* axes,
-    int* strides) {
-  std::vector<int> buff(ndim);
-  int cur_stride = 1;
-  for (int i = ndim - 1; i >= 0; --i) {
-    buff[i] = cur_stride;
-    cur_stride *= dims[i];
+#define CAFFE2_SPECIALIZED_COMPUTE_TRANSPOSED_STRIDES(TIndex)                 \
+  template <>                                                                 \
+  C10_EXPORT void ComputeTransposedStrides<TIndex>(                           \
+      const int ndim, const TIndex* dims, const int* axes, TIndex* strides) { \
+    std::vector<TIndex> buff(ndim);                                           \
+    TIndex cur_stride = 1;                                                    \
+    for (int i = ndim - 1; i >= 0; --i) {                                     \
+      buff[i] = cur_stride;                                                   \
+      cur_stride *= dims[i];                                                  \
+    }                                                                         \
+    for (int i = 0; i < ndim; ++i) {                                          \
+      strides[i] = buff[axes[i]];                                             \
+    }                                                                         \
   }
-  for (int i = 0; i < ndim; ++i) {
-    strides[i] = buff[axes[i]];
-  }
-}
+CAFFE2_SPECIALIZED_COMPUTE_TRANSPOSED_STRIDES(std::int32_t)
+CAFFE2_SPECIALIZED_COMPUTE_TRANSPOSED_STRIDES(std::int64_t)
+#undef CAFFE2_SPECIALIZED_COMPUTE_TRANSPOSED_STRIDES
 
 } // namespace utils
 } // namespace math
